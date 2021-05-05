@@ -83,11 +83,7 @@ const positionProperty = new Cesium.SampledPositionProperty();
 // viewer.trackedEntity = airplaneEntity;
 
 
-loadTrack("data/tracks/20190803.czml", viewer);
-// loadTrack("data/tracks/20190804.czml", viewer);
-// loadTrack("data/tracks/20190805.czml", viewer);
-// loadTrack("data/tracks/20190808.czml", viewer);
-// loadTrack("data/tracks/20190809.czml", viewer);
+loadTrack("data/tracks/combined.czml", viewer);
 
 viewer.camera.flyTo({
   destination: Cesium.Cartesian3.fromDegrees(13.862629, 60.050526, 50000.0)

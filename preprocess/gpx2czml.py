@@ -9,7 +9,7 @@ import os
 
 ## See a primer on reading GPX data in python here: http://andykee.com/visualizing-strava-tracks-with-python.html
 
-def parse_gpx(gpx_input_file):
+def gpx_to_dataframe(gpx):
     lats = []
     lons = []
     elevations = []
@@ -22,7 +22,7 @@ def parse_gpx(gpx_input_file):
                 lons.append(point.longitude)
                 elevations.append(point.elevation)
                 timestamps.append(point.time)
-                   
+
     output = pd.DataFrame()
     output['latitude'] = lats
     output['longitude'] = lons
@@ -49,7 +49,7 @@ def format_datetime(datetime):
 
 def create_path(path_id, df_input, coordinate_list, color):
     path_starttime = format_datetime(min(df_input['starttime']))
-    path_stoptime = format_datetime(max(df_input['starttime']))
+    path_stoptime = format_datetime(max(df_input['stoptime']))
     path_availability = path_starttime + "/" + path_stoptime
     return {
         "id": path_id,
@@ -80,7 +80,7 @@ def create_path(path_id, df_input, coordinate_list, color):
 
 def create_point(point_id, df_input, coordinate_list, color):
     point_starttime = format_datetime(min(df_input['starttime']))
-    point_stoptime = format_datetime(max(df_input['starttime']))
+    point_stoptime = format_datetime(max(df_input['stoptime']))
     point_availability = point_starttime + "/" + point_stoptime
     return {
         "id": point_id,
@@ -102,9 +102,9 @@ def create_point(point_id, df_input, coordinate_list, color):
         }   
     }
 
-def create_first_packet(name, df_input):
-    starttime = format_datetime(min(df_input['starttime']))
-    stoptime = format_datetime(max(df_input['stoptime']))
+def create_document_packet(name, starttime, stoptime):
+    starttime = format_datetime(starttime)
+    stoptime = format_datetime(stoptime)
     availability = starttime + "/" + stoptime
     return {
         "id": "document",
@@ -118,42 +118,60 @@ def create_first_packet(name, df_input):
         }
     }
 
-def create_czml(df_input):
+def get_color(index):
+    return [
+        [0, 173, 253, 200],
+        [173, 0, 253, 200],
+        [0, 253, 173, 200],
+        [173, 253, 0, 200],
+        [253, 173, 0, 200],
+        [253, 0, 173, 200],
+        [173, 253, 253, 200],
+    ][index]
+
+def process_dir(tracks_dir):
+    # Get files
+    listdir = os.listdir(tracks_dir)
+    listdir.sort()
+    paths = [os.path.join(tracks_dir, file) for file in listdir if file[-4:] == '.gpx']
+
+    czml_packets = []
+    starttime = None  # global start and end time
+    stoptime = None
     
-    # Store output in array
-    czml_output = []
+    for index, path in enumerate(paths):
+        # Parse file
+        gpx_file = open(path, 'r')
+        gpx = gpxpy.parse(gpx_file)
+        
+        # Convert to dataframe
+        df = gpx_to_dataframe(gpx)
+        #print(df.head())
 
-    # Define global variables
-    global_packet = create_first_packet("testing", df_input)
-    czml_output.append(global_packet)
+        # Coordinates used for both path and point
+        coordinate_list = create_coordinate_list(df)
 
-    # Coordinates used for both path and point
-    coordinate_list = create_coordinate_list(df_input)
+        # Path
+        path_object = create_path(f'path_{index}', df, coordinate_list, get_color(index))
+        czml_packets.append(path_object)
 
-    # Path
-    path_object = create_path("path", df_input, coordinate_list, [0, 173, 253, 200])
-    czml_output.append(path_object)
+        # Point
+        point_object = create_point(f'point_{index}', df, coordinate_list, get_color(6))
+        czml_packets.append(point_object)
 
-    # Point
-    point_object = create_point("point", df_input, coordinate_list, [0, 253, 173, 255])
-    czml_output.append(point_object)
-    
-    return czml_output
+        # Update global start/end time
+        current_min = min(df['starttime'])
+        current_max = max(df['stoptime'])
+        starttime = current_min if index == 0 else min(starttime, current_min)
+        stoptime = current_max if index == 0 else max(stoptime, current_max)
 
+    # Define document packet (now that global start and end time are known)
+    document_packet = create_document_packet("testing", starttime, stoptime)
+    czml_packets.insert(0, document_packet)
+
+    # Write output
+    with open(os.path.join(tracks_dir, 'combined.czml'), 'w') as outfile:
+        json.dump(czml_packets, outfile)
 
 if __name__ == "__main__":
-    
-    tracks_dir = "../../data/tracks/"
-    for file in os.listdir(tracks_dir):
-        print(file, file[-4:])
-        if file[-4:] == '.gpx':
-            gpx_file = open(os.path.join(tracks_dir, file), 'r')
-            gpx = gpxpy.parse(gpx_file)
-            
-            df = parse_gpx(gpx)
-            #print(df.head())
-            czml_output = create_czml(df)
-
-            # Write output
-            with open(os.path.join(tracks_dir, file.split('.')[0] + '.czml'), 'w') as outfile:
-                json.dump(czml_output, outfile)
+    process_dir("../../data/tracks/")
