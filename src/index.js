@@ -3,6 +3,7 @@ window.CESIUM_BASE_URL = '/';
 
 import * as Cesium from 'cesium';
 import "cesium/Build/Cesium/Widgets/widgets.css";
+import "./style.css";
 //import viewerCesiumNavigationMixin from 'cesium-navigation';
 import { loadTrack } from './tracks';
 
@@ -16,6 +17,18 @@ const viewer = new Cesium.Viewer('cesiumContainer', {
   baseLayerPicker: false,
   shouldAnimate: true
 });
+
+
+// Set infobox css
+const frame = viewer.infoBox.frame;
+frame.addEventListener('load', function () {
+    var cssLink = frame.contentDocument.createElement('link');
+    cssLink.href = Cesium.buildModuleUrl('infobox.css');
+    cssLink.rel = 'stylesheet';
+    cssLink.type = 'text/css';
+    frame.contentDocument.head.appendChild(cssLink);
+}, false);
+
 
 // Initialize cesium-navigation plugin
 const options = {};
@@ -83,7 +96,7 @@ const positionProperty = new Cesium.SampledPositionProperty();
 // viewer.trackedEntity = airplaneEntity;
 
 
-loadTrack("data/tracks/combined.czml", viewer);
+loadTrack("data/combined.czml", viewer);
 
 viewer.camera.flyTo({
   destination: Cesium.Cartesian3.fromDegrees(13.862629, 60.050526, 50000.0)

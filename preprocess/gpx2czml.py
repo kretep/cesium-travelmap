@@ -4,6 +4,7 @@ import numpy as np
 import gpxpy
 import json
 import os
+import dotenv
 
 # Adapted from Will Geary, "Visualizing a Bike Ride in 3D", https://willgeary.github.io/GPXto3D/
 
@@ -119,23 +120,23 @@ def create_document_packet(name, starttime, stoptime):
     }
 
 def get_color(index):
+    opacity = 100
     return [
-        [0, 173, 253, 200],
-        [173, 0, 253, 200],
-        [0, 253, 173, 200],
-        [173, 253, 0, 200],
-        [253, 173, 0, 200],
-        [253, 0, 173, 200],
-        [173, 253, 253, 200],
+        [0, 173, 253, opacity],
+        [173, 0, 253, opacity],
+        [0, 253, 173, opacity],
+        [173, 253, 0, opacity],
+        [253, 173, 0, opacity],
+        [253, 0, 173, opacity],
+        [173, 253, 253, opacity],
     ][index]
 
-def process_dir(tracks_dir):
+def process_tracks(tracks_dir, czml):
     # Get files
     listdir = os.listdir(tracks_dir)
     listdir.sort()
     paths = [os.path.join(tracks_dir, file) for file in listdir if file[-4:] == '.gpx']
 
-    czml_packets = []
     starttime = None  # global start and end time
     stoptime = None
     
@@ -153,11 +154,11 @@ def process_dir(tracks_dir):
 
         # Path
         path_object = create_path(f'path_{index}', df, coordinate_list, get_color(index))
-        czml_packets.append(path_object)
+        czml.append(path_object)
 
         # Point
         point_object = create_point(f'point_{index}', df, coordinate_list, get_color(6))
-        czml_packets.append(point_object)
+        czml.append(point_object)
 
         # Update global start/end time
         current_min = min(df['starttime'])
@@ -167,11 +168,57 @@ def process_dir(tracks_dir):
 
     # Define document packet (now that global start and end time are known)
     document_packet = create_document_packet("testing", starttime, stoptime)
-    czml_packets.insert(0, document_packet)
+    czml.insert(0, document_packet)
 
-    # Write output
-    with open(os.path.join(tracks_dir, 'combined.czml'), 'w') as outfile:
-        json.dump(czml_packets, outfile)
+def create_photo_marker(id, row):
+    lat = row['GPSLatitude']
+    lon = row['GPSLongitude']
+    alt = row['GPSAltitude']
+    if lat == '-' or lon == '-' or alt == '-':
+        return None
+    coordinates = [float(lon), float(lat), float(alt)]
+    description = f'<div><img src="data/photos/{row["FileName"]}" width="100%" height="100%" style="float:left; margin: 0 1em 1em 0;" /></div><p>testing</p>'
+    return {
+        "id": id,
+        "name": id,
+        "description": description,
+        #"availability": point_availability,
+        "position": {
+            #"epoch": point_starttime,
+            "cartographicDegrees": coordinates
+        },
+        "point": {
+            "color": {
+                "rgba": [255, 255, 255, 100]
+            },
+            "outlineColor": {
+                "rgba": [250, 100, 0, 200]
+            },
+            "outlineWidth": 10,
+            "pixelSize": 20,
+            "heightReference": "NONE"
+        }
+    }
+
+def process_photos(csv_path, czml):
+    df = pd.read_csv(csv_path)
+    df.sort_values('DateTimeOriginal', inplace=True)
+    df.reset_index(drop=True, inplace=True)
+    df.to_csv(csv_path + '_sorted.csv')
+    for index, row in df.iterrows():
+        marker = create_photo_marker(f'photo_{index}', row)
+        if marker is not None:
+            czml.append(marker)
 
 if __name__ == "__main__":
-    process_dir("../../data/tracks/")
+    dotenv.load_dotenv()
+    data_dir = os.environ['DATA_DIR']
+    czml = []
+    
+    # Process
+    process_tracks(os.path.join(data_dir, 'tracks'), czml)
+    process_photos(os.path.join(data_dir, 'photos.csv'), czml)
+
+    # Write output
+    with open(os.path.join(data_dir, 'combined.czml'), 'w') as outfile:
+        json.dump(czml, outfile)
