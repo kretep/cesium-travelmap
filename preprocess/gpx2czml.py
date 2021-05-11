@@ -5,10 +5,14 @@ import gpxpy
 import json
 import os
 import dotenv
+from bisect import bisect_left, bisect_right
+from datetime import datetime, timedelta
 
 # Adapted from Will Geary, "Visualizing a Bike Ride in 3D", https://willgeary.github.io/GPXto3D/
 
 ## See a primer on reading GPX data in python here: http://andykee.com/visualizing-strava-tracks-with-python.html
+
+DATETIME_FORMAT = "%Y-%m-%d %H:%M:%S%z"
 
 def gpx_to_dataframe(gpx):
     lats = []
@@ -63,12 +67,12 @@ def create_path(path_id, df_input, coordinate_list, color):
             "material": {
                 "polylineOutline": {
                     "color": {
-                        "rgba": [255, 255, 255, 200]
+                        "rgba": color
                     },
                     "outlineColor": {
                         "rgba": color
                     },
-                    "outlineWidth": 5
+                    "outlineWidth": 0
                 }
             },
             "width": 6,
@@ -131,93 +135,117 @@ def get_color(index):
         [173, 253, 253, opacity],
     ][index]
 
-def process_tracks(tracks_dir, czml):
-    # Get files
+def load_track(path):
+    gpx_file = open(path, 'r')
+    gpx = gpxpy.parse(gpx_file)
+    return gpx_to_dataframe(gpx)
+
+def load_tracks(tracks_dir):
     listdir = os.listdir(tracks_dir)
     listdir.sort()
     paths = [os.path.join(tracks_dir, file) for file in listdir if file[-4:] == '.gpx']
+    gpx_dfs = [load_track(path) for path in paths]
+    return gpx_dfs
 
-    starttime = None  # global start and end time
-    stoptime = None
-    
-    for index, path in enumerate(paths):
-        # Parse file
-        gpx_file = open(path, 'r')
-        gpx = gpxpy.parse(gpx_file)
-        
-        # Convert to dataframe
-        df = gpx_to_dataframe(gpx)
-        #print(df.head())
+def process_track(df, czml, index):
+    # Coordinates used for both path and point
+    coordinate_list = create_coordinate_list(df)
 
-        # Coordinates used for both path and point
-        coordinate_list = create_coordinate_list(df)
+    # Path
+    path_object = create_path(f'path_{index}', df, coordinate_list, get_color(index))
+    czml.append(path_object)
 
-        # Path
-        path_object = create_path(f'path_{index}', df, coordinate_list, get_color(index))
-        czml.append(path_object)
+    # Point
+    point_object = create_point(f'point_{index}', df, coordinate_list, get_color(6))
+    czml.append(point_object)
 
-        # Point
-        point_object = create_point(f'point_{index}', df, coordinate_list, get_color(6))
-        czml.append(point_object)
-
-        # Update global start/end time
-        current_min = min(df['starttime'])
-        current_max = max(df['stoptime'])
-        starttime = current_min if index == 0 else min(starttime, current_min)
-        stoptime = current_max if index == 0 else max(stoptime, current_max)
-
-    # Define document packet (now that global start and end time are known)
-    document_packet = create_document_packet("testing", starttime, stoptime)
-    czml.insert(0, document_packet)
-
-def create_photo_marker(id, row):
-    lat = row['GPSLatitude']
-    lon = row['GPSLongitude']
-    alt = row['GPSAltitude']
-    if lat == '-' or lon == '-' or alt == '-':
-        return None
-    coordinates = [float(lon), float(lat), float(alt)]
-    description = f'<div><img src="data/photos/{row["FileName"]}" width="100%" height="100%" style="float:left; margin: 0 1em 1em 0;" /></div><p>testing</p>'
+def create_photo_marker(id, row, track):
+    coordinates, isEstimated = get_photo_coordinates(row, track)
+    description = f'<div>{row["DateTimeOriginal"]}<br /><img src="data/photos/{row["FileName"]}" width="100%" height="100%" style="float:left; margin: 0 1em 1em 0;" /></div><p>testing</p>'
     return {
         "id": id,
-        "name": id,
+        "name": f'{id} {"estimated location" if isEstimated else ""}',
         "description": description,
-        #"availability": point_availability,
         "position": {
-            #"epoch": point_starttime,
             "cartographicDegrees": coordinates
         },
         "point": {
             "color": {
-                "rgba": [255, 255, 255, 100]
+                "rgba": [50, 200, 50, 50]
             },
             "outlineColor": {
-                "rgba": [250, 100, 0, 200]
+                "rgba": [200, 200, 0, 255]
             },
-            "outlineWidth": 10,
+            "outlineWidth": 2,
             "pixelSize": 20,
             "heightReference": "NONE"
         }
     }
 
-def process_photos(csv_path, czml):
+def get_photo_coordinates(photo_row, track):
+    lat = photo_row['GPSLatitude#']
+    lon = photo_row['GPSLongitude#']
+    alt = photo_row['GPSAltitude#']
+    if lat != '-' and lon != '-' and alt != '-':
+        return [float(lon), float(lat), float(alt)], 0
+    val = photo_row['DateTimeOriginal']
+    index = get_closests(track, 'starttime', val)
+    track_row = track.iloc[index]
+    lat = track_row['latitude']
+    lon = track_row['longitude']
+    alt = track_row['elevation']
+    return [float(lon), float(lat), float(alt)], 1
+
+def get_closests(df, col, val):
+    index = bisect_left(df[col].tolist(), val)
+    if index >= df.shape[0]:
+        index = df.shape[0] - 1
+    return index
+    # lower_idx = bisect_left(df[col].values, val)
+    # higher_idx = bisect_right(df[col].values, val)
+    # if higher_idx == lower_idx:      #val is not in the list
+    #     return lower_idx - 1, lower_idx
+    # else:                            #val is in the list
+    #     return lower_idx
+
+def process_photos(csv_path, czml, combined_tracks):
     df = pd.read_csv(csv_path)
+    df['CreateDate'] = df['CreateDate'].apply(lambda s: datetime.strptime(s, DATETIME_FORMAT) + timedelta(hours=1))
+    df['DateTimeOriginal'] = df['DateTimeOriginal'].apply(lambda s: datetime.strptime(s, DATETIME_FORMAT) + timedelta(hours=1))
     df.sort_values('DateTimeOriginal', inplace=True)
     df.reset_index(drop=True, inplace=True)
     df.to_csv(csv_path + '_sorted.csv')
     for index, row in df.iterrows():
-        marker = create_photo_marker(f'photo_{index}', row)
+        marker = create_photo_marker(f'photo_{index}', row, combined_tracks)
         if marker is not None:
             czml.append(marker)
 
+def get_datadir():
+    return os.environ['DATA_DIR']
+
 if __name__ == "__main__":
     dotenv.load_dotenv()
-    data_dir = os.environ['DATA_DIR']
+    data_dir = get_datadir()
     czml = []
     
-    # Process
-    process_tracks(os.path.join(data_dir, 'tracks'), czml)
-    process_photos(os.path.join(data_dir, 'photos.csv'), czml)
+    # Process tracks
+    tracks = load_tracks(os.path.join(data_dir, 'tracks'))
+    for index, track in enumerate(tracks):
+        process_track(track, czml, index)
+    
+    # Combined tracks
+    combined_tracks = pd.concat(tracks)
+    combined_tracks.sort_values('starttime', inplace=True)
+    combined_tracks.reset_index(drop=True, inplace=True)
+    combined_tracks.to_csv(os.path.join(get_datadir(), 'tracks_combined.csv'))
+
+    # Define document packet
+    starttime = min(combined_tracks['starttime'])
+    stoptime = max(combined_tracks['stoptime'])
+    document_packet = create_document_packet("testing", starttime, stoptime)
+    czml.insert(0, document_packet)
+
+    process_photos(os.path.join(data_dir, 'photos.csv'), czml, combined_tracks)
 
     # Write output
     with open(os.path.join(data_dir, 'combined.czml'), 'w') as outfile:
