@@ -7,6 +7,7 @@ import os
 import dotenv
 from bisect import bisect_left, bisect_right
 from datetime import datetime, timedelta
+import configparser
 
 # Adapted from Will Geary, "Visualizing a Bike Ride in 3D", https://willgeary.github.io/GPXto3D/
 
@@ -159,9 +160,10 @@ def process_track(df, czml, index):
     point_object = create_point(f'point_{index}', df, coordinate_list, get_color(6))
     czml.append(point_object)
 
-def create_photo_marker(id, row, track):
+def create_photo_marker(id, row, track, config, dir_name):
+    attribution = config.get('global', 'attribution')
     coordinates, isEstimated = get_photo_coordinates(row, track)
-    description = f'<div>{row["DateTimeOriginal"]}<br /><img src="data/photos/{row["FileName"]}" width="100%" height="100%" style="float:left; margin: 0 1em 1em 0;" /></div><p>testing</p>'
+    description = f'<div>{attribution}, {row["DateTimeOriginal"]}<br /><img src="data/photos/{dir_name}/{row["FileName"]}" width="100%" height="100%" style="float:left; margin: 0 1em 1em 0;" /></div><p>testing</p>'
     return {
         "id": id,
         "name": f'{id} {"estimated location" if isEstimated else ""}',
@@ -208,15 +210,29 @@ def get_closests(df, col, val):
     # else:                            #val is in the list
     #     return lower_idx
 
-def process_photos(csv_path, czml, combined_tracks):
+def process_photos(dir_name, czml, combined_tracks):
+    photo_dir = os.path.join(get_datadir(), 'photos', dir_name)
+
+    # Read config
+    config = configparser.RawConfigParser()
+    config_path = os.path.join(photo_dir, 'config.cfg')
+    if not os.path.exists(config_path): return
+    config.read(config_path)
+    delta_hours = int(config.get('global', 'delta.hours', fallback=0))
+    delta_minutes = int(config.get('global', 'delta.minutes', fallback=0))
+
+    # Read and preprocess csv (exiftool output)
+    csv_path = os.path.join(photo_dir, 'photos.csv')
     df = pd.read_csv(csv_path)
-    df['CreateDate'] = df['CreateDate'].apply(lambda s: datetime.strptime(s, DATETIME_FORMAT) + timedelta(hours=1))
-    df['DateTimeOriginal'] = df['DateTimeOriginal'].apply(lambda s: datetime.strptime(s, DATETIME_FORMAT) + timedelta(hours=1))
+    #df['CreateDate'] = df['CreateDate'].apply(lambda s: datetime.strptime(s, DATETIME_FORMAT) + timedelta(hours=delta_hours, minutes=delta_minutes))
+    df['DateTimeOriginal'] = df['DateTimeOriginal'].apply(lambda s: datetime.strptime(s, DATETIME_FORMAT) + timedelta(hours=delta_hours, minutes=delta_minutes))
     df.sort_values('DateTimeOriginal', inplace=True)
     df.reset_index(drop=True, inplace=True)
     df.to_csv(csv_path + '_sorted.csv')
+
+    # Create markers for photos
     for index, row in df.iterrows():
-        marker = create_photo_marker(f'photo_{index}', row, combined_tracks)
+        marker = create_photo_marker(f'photo_{dir_name}_{index}', row, combined_tracks, config, dir_name)
         if marker is not None:
             czml.append(marker)
 
@@ -245,7 +261,11 @@ if __name__ == "__main__":
     document_packet = create_document_packet("testing", starttime, stoptime)
     czml.insert(0, document_packet)
 
-    process_photos(os.path.join(data_dir, 'photos.csv'), czml, combined_tracks)
+    photo_dir = os.path.join(data_dir, 'photos')
+    photo_dirs = [name for name in os.listdir(photo_dir) if os.path.isdir(os.path.join(photo_dir, name))]
+    photo_dirs.sort()
+    for dir_name in photo_dirs:
+        process_photos(dir_name, czml, combined_tracks)
 
     # Write output
     with open(os.path.join(data_dir, 'combined.czml'), 'w') as outfile:
