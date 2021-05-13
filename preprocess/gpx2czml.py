@@ -19,6 +19,7 @@ def gpx_to_dataframe(gpx):
     lats = []
     lons = []
     elevations = []
+    starttimes = []
     timestamps = []
 
     for track in gpx.tracks:
@@ -27,15 +28,17 @@ def gpx_to_dataframe(gpx):
                 lats.append(point.latitude)
                 lons.append(point.longitude)
                 elevations.append(point.elevation)
-                timestamps.append(point.time)
+                starttimes.append(point.time)
+                timestamps.append(point.time.timestamp())
 
     output = pd.DataFrame()
     output['latitude'] = lats
     output['longitude'] = lons
     output['elevation'] = elevations
-    output['starttime'] = timestamps
+    output['starttime'] = starttimes
     output['stoptime'] = output['starttime'].shift(-1).fillna(method='ffill')
     output['duration'] = (output['stoptime'] - output['starttime']) / np.timedelta64(1, 's') ## duration to seconds
+    output['timestamp'] = timestamps
     return output
 
 def create_coordinate_list(df_input):
@@ -163,6 +166,8 @@ def process_track(df, czml, index):
 def create_photo_marker(id, row, track, config, dir_name):
     attribution = config.get('global', 'attribution')
     coordinates, isEstimated = get_photo_coordinates(row, track)
+    if coordinates is None:
+        return None
     description = f'<div>{attribution}, {row["DateTimeOriginal"]}<br /><img src="data/photos/{dir_name}/{row["FileName"]}" width="100%" height="100%" style="float:left; margin: 0 1em 1em 0;" /></div><p>testing</p>'
     return {
         "id": id,
@@ -190,25 +195,33 @@ def get_photo_coordinates(photo_row, track):
     alt = photo_row['GPSAltitude#']
     if lat != '-' and lon != '-' and alt != '-':
         return [float(lon), float(lat), float(alt)], 0
-    val = photo_row['DateTimeOriginal']
-    index = get_closests(track, 'starttime', val)
-    track_row = track.iloc[index]
-    lat = track_row['latitude']
-    lon = track_row['longitude']
-    alt = track_row['elevation']
+    
+    # No GPS data found; use photo time and GPS track to determine position
+    tt = photo_row['DateTimeOriginal'].timestamp()
+    i0, i1 = get_closests(track, 'timestamp', tt)
+    track_row0 = track.iloc[i0]
+    track_row1 = track.iloc[i1]
+    t0 = track_row0['timestamp']
+    t1 = track_row1['timestamp']
+    fract = (tt - t0) / (t1 - t0)
+
+    # Discard any photos outside track time bounds
+    if fract < 0 or fract > 1:
+        return None, None
+
+    # Interpolate
+    lat = track_row0['latitude'] + fract * (track_row1['latitude'] - track_row0['latitude'])
+    lon = track_row0['longitude'] + fract * (track_row1['longitude'] - track_row0['longitude'])
+    alt = track_row0['elevation'] + fract * (track_row1['elevation'] - track_row0['elevation'])
     return [float(lon), float(lat), float(alt)], 1
 
 def get_closests(df, col, val):
-    index = bisect_left(df[col].tolist(), val)
-    if index >= df.shape[0]:
-        index = df.shape[0] - 1
-    return index
-    # lower_idx = bisect_left(df[col].values, val)
-    # higher_idx = bisect_right(df[col].values, val)
-    # if higher_idx == lower_idx:      #val is not in the list
-    #     return lower_idx - 1, lower_idx
-    # else:                            #val is in the list
-    #     return lower_idx
+    # Index before "insertion" point
+    i0 = bisect_left(df[col].tolist(), val) - 1
+    # Make sure both i0 and i1 will be within bounds
+    i0 = min(max(i0, 0), df.shape[0] - 2)
+    i1 = i0 + 1
+    return i0, i1
 
 def process_photos(dir_name, czml, combined_tracks):
     photo_dir = os.path.join(get_datadir(), 'photos', dir_name)
@@ -261,6 +274,7 @@ if __name__ == "__main__":
     document_packet = create_document_packet("testing", starttime, stoptime)
     czml.insert(0, document_packet)
 
+    # Process photos
     photo_dir = os.path.join(data_dir, 'photos')
     photo_dirs = [name for name in os.listdir(photo_dir) if os.path.isdir(os.path.join(photo_dir, name))]
     photo_dirs.sort()
