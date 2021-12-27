@@ -14,6 +14,11 @@ import configparser
 ## See a primer on reading GPX data in python here: http://andykee.com/visualizing-strava-tracks-with-python.html
 
 DATETIME_FORMAT = "%Y-%m-%d %H:%M:%S%z"
+HEADER_DATE_TIME = "datetimeoriginal"
+HEADER_LAT = "gpslatitude#"
+HEADER_LON = "gpslongitude#"
+HEADER_ALT = "gpsaltitude#"
+HEADER_FILENAME = "filename"
 
 def gpx_to_dataframe(gpx):
     lats = []
@@ -168,7 +173,7 @@ def create_photo_marker(id, row, track, config, dir_name):
     coordinates, isEstimated = get_photo_coordinates(row, track)
     if coordinates is None:
         return None
-    description = f'<div>{attribution}, {row["DateTimeOriginal"]}<br /><img src="data/photos/{dir_name}/{row["FileName"]}" width="100%" height="100%" style="float:left; margin: 0 1em 1em 0;" /></div><p>testing</p>'
+    description = f'<div>{attribution}, {row[HEADER_DATE_TIME]}<br /><img src="data/photos/{dir_name}/{row[HEADER_FILENAME]}" width="100%" height="100%" style="float:left; margin: 0 1em 1em 0;" /></div><p>testing</p>'
     return {
         "id": id,
         "name": f'{id} {"estimated location" if isEstimated else ""}',
@@ -190,14 +195,14 @@ def create_photo_marker(id, row, track, config, dir_name):
     }
 
 def get_photo_coordinates(photo_row, track):
-    lat = photo_row['GPSLatitude#']
-    lon = photo_row['GPSLongitude#']
-    alt = photo_row['GPSAltitude#']
+    lat = photo_row[HEADER_LAT]
+    lon = photo_row[HEADER_LON]
+    alt = photo_row[HEADER_ALT]
     if lat != '-' and lon != '-' and alt != '-':
         return [float(lon), float(lat), float(alt)], 0
     
     # No GPS data found; use photo time and GPS track to determine position
-    tt = photo_row['DateTimeOriginal'].timestamp()
+    tt = photo_row[HEADER_DATE_TIME].timestamp()
     i0, i1 = get_closests(track, 'timestamp', tt)
     track_row0 = track.iloc[i0]
     track_row1 = track.iloc[i1]
@@ -225,6 +230,7 @@ def get_closests(df, col, val):
 
 def process_photos(dir_name, czml, combined_tracks):
     photo_dir = os.path.join(get_datadir(), 'photos', dir_name)
+    print(f"Processing photos: ${photo_dir}")
 
     # Read config
     config = configparser.RawConfigParser()
@@ -237,9 +243,10 @@ def process_photos(dir_name, czml, combined_tracks):
     # Read and preprocess csv (exiftool output)
     csv_path = os.path.join(photo_dir, 'photos.csv')
     df = pd.read_csv(csv_path)
+    df = df.rename(str.lower, axis='columns')
     #df['CreateDate'] = df['CreateDate'].apply(lambda s: datetime.strptime(s, DATETIME_FORMAT) + timedelta(hours=delta_hours, minutes=delta_minutes))
-    df['DateTimeOriginal'] = df['DateTimeOriginal'].apply(lambda s: datetime.strptime(s, DATETIME_FORMAT) + timedelta(hours=delta_hours, minutes=delta_minutes))
-    df.sort_values('DateTimeOriginal', inplace=True)
+    df[HEADER_DATE_TIME] = df[HEADER_DATE_TIME].apply(lambda s: datetime.strptime(s, DATETIME_FORMAT) + timedelta(hours=delta_hours, minutes=delta_minutes))
+    df.sort_values(HEADER_DATE_TIME, inplace=True)
     df.reset_index(drop=True, inplace=True)
     df.to_csv(csv_path + '_sorted.csv')
 
@@ -258,6 +265,7 @@ if __name__ == "__main__":
     czml = []
     
     # Process tracks
+    print(f"Loading and combining tracks")
     tracks = load_tracks(os.path.join(data_dir, 'tracks'))
     for index, track in enumerate(tracks):
         process_track(track, czml, index)
@@ -282,5 +290,7 @@ if __name__ == "__main__":
         process_photos(dir_name, czml, combined_tracks)
 
     # Write output
-    with open(os.path.join(data_dir, 'combined.czml'), 'w') as outfile:
+    path = os.path.join(data_dir, 'combined.czml')
+    print(f"Writing output to ${path}")
+    with open(path, 'w') as outfile:
         json.dump(czml, outfile)
