@@ -1,5 +1,5 @@
 // The URL on your server where CesiumJS's static files are hosted.
-window.CESIUM_BASE_URL = '/';
+window.CESIUM_BASE_URL = process.env.CESIUM_BASE_URL;
 
 import * as Cesium from 'cesium';
 import "cesium/Build/Cesium/Widgets/widgets.css";
