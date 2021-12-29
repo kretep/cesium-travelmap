@@ -68,7 +68,7 @@ options.units = 'kilometers' // default is kilometers;
 // viewer.clock.shouldAnimate = false;
 
 // The SampledPositionedProperty stores the position and timestamp for each sample along the radar sample series.
-const positionProperty = new Cesium.SampledPositionProperty();
+//const positionProperty = new Cesium.SampledPositionProperty();
 
 // for (let i = 0; i < flightData.length; i++) {
 //   const dataPoint = flightData[i];
@@ -98,17 +98,8 @@ const positionProperty = new Cesium.SampledPositionProperty();
 // // Make the camera track this moving entity.
 // viewer.trackedEntity = airplaneEntity;
 
-const selectPhotoHandler = event => {
-  const entity = event.target.entity;
-
-  // Update timeline
-  const julianDate = Cesium.JulianDate.fromIso8601(entity.properties.time._value);
-  viewer.clock.currentTime = julianDate;
-
-  // Select entity
-  viewer.selectedEntity = entity;
-
-  // Fly to entity (but keep camera height)
+// Moves the camera to the entity
+const flyToEntity = entity => {
   const position = Cesium.Cartographic.fromCartesian(entity.position._value);
   const height = viewer.camera.positionCartographic.height;
   position.height = height;
@@ -120,6 +111,39 @@ const selectPhotoHandler = event => {
     duration: 1.0
   });
 };
+
+// Moves the photo timeline to the entity
+const photoTimelineToEntity = entity => {
+  const img = document.getElementById(entity.id);
+  img.scrollIntoView({inline: "center"});
+}
+
+// Moves the timeline slider to the entity
+const timelineToEntity = entity => {
+  const julianDate = Cesium.JulianDate.fromIso8601(entity.properties.time._value);
+  viewer.clock.currentTime = julianDate;
+}
+
+// Handler for selecting a timeline photo (img)
+const selectTimelinePhoto = entity => {
+  timelineToEntity(entity);
+  viewer.selectedEntity = entity;
+  flyToEntity(entity);
+};
+
+// Handler for map selection of an entity
+const selectPhotoEntity = entity => {
+  if (Cesium.defined(entity) && entity.id.startsWith('photo_')) {
+    photoTimelineToEntity(entity);
+    timelineToEntity(entity);
+    flyToEntity(entity);
+  }
+  else {
+    // Effectively prevents non-photo entities from being selected
+    viewer.selectedEntity = undefined;
+  }
+}
+viewer.selectedEntityChanged.addEventListener(selectPhotoEntity);
 
 loadTrack("data/combined.czml", viewer)
   .then(() => {
@@ -151,7 +175,7 @@ loadTrack("data/combined.czml", viewer)
     for (let entity of entities) {
       const img = document.createElement('img');
       img.src = placeholderImage;
-      img.onclick = selectPhotoHandler;
+      img.onclick = event => selectTimelinePhoto(event.target.entity);
       img.setAttribute('id', entity.id);
       img.setAttribute('height', '100%');
       img.setAttribute('alt', entity.id);
