@@ -133,15 +133,15 @@ def create_document_packet(name, starttime, stoptime):
     }
 
 def get_color(index):
-    opacity = 100
+    opacity = 150
     return [
-        [0, 173, 253, opacity],
-        [173, 0, 253, opacity],
-        [0, 253, 173, opacity],
-        [173, 253, 0, opacity],
-        [253, 173, 0, opacity],
-        [253, 0, 173, opacity],
-        [173, 253, 253, opacity],
+        [120, 190, 255, opacity],
+        [190, 120, 255, opacity],
+        [120, 255, 190, opacity],
+        [190, 255, 120, opacity],
+        [255, 120, 190, opacity],
+        [255, 190, 120, opacity],
+        [190, 255, 255, opacity],
     ][index]
 
 def load_track(path):
@@ -176,7 +176,7 @@ def create_photo_marker(id, row, track, config, dir_name):
     description = f'<div>{attribution}, {row[HEADER_DATE_TIME]}<br /><img src="data/photos/{dir_name}/{row[HEADER_FILENAME]}" width="100%" height="100%" style="float:left; margin: 0 1em 1em 0;" /></div><p>testing</p>'
     return {
         "id": id,
-        "name": f'{id} {"estimated location" if isEstimated else ""}',
+        "name": f'{id} (location {"estimated" if isEstimated else "GPS"})',
         "description": description,
         "position": {
             "cartographicDegrees": coordinates
