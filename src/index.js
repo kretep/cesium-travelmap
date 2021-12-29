@@ -37,9 +37,11 @@ const options = {};
 options.enableCompass = true;
 options.enableZoomControls = true;
 options.enableDistanceLegend = true;
+
 options.units = 'kilometers' // default is kilometers;
 // turf helpers units https://github.com/Turfjs/turf/blob/v5.1.6/packages/turf-helpers/index.d.ts#L20
 //options.distanceLabelFormatter = (convertedDistance, units : Units): string => { ... } // custom label formatter
+
 //viewer.extend(viewerCesiumNavigationMixin, options);
 
 
@@ -96,11 +98,27 @@ const positionProperty = new Cesium.SampledPositionProperty();
 // // Make the camera track this moving entity.
 // viewer.trackedEntity = airplaneEntity;
 
-const observers = [];
+const selectPhotoHandler = event => {
+  const entity = event.target.entity;
 
-const visibilityCallback = (entries, observer) => {
-  console.log(entries, observer);
-  //entries.target.setAttribute('src', entries.target.getAttribute('src2'));
+  // Update timeline
+  const julianDate = Cesium.JulianDate.fromIso8601(entity.properties.time._value);
+  viewer.clock.currentTime = julianDate;
+
+  // Select entity
+  viewer.selectedEntity = entity;
+
+  // Fly to entity (but keep camera height)
+  const position = Cesium.Cartographic.fromCartesian(entity.position._value);
+  const height = viewer.camera.positionCartographic.height;
+  position.height = height;
+  viewer.camera.flyTo({
+    destination: Cesium.Cartesian3.fromRadians(
+      position.longitude,
+      position.latitude,
+      height),
+    duration: 1.0
+  });
 };
 
 loadTrack("data/combined.czml", viewer)
@@ -133,13 +151,14 @@ loadTrack("data/combined.czml", viewer)
     for (let entity of entities) {
       const img = document.createElement('img');
       img.src = placeholderImage;
+      img.onclick = selectPhotoHandler;
       img.setAttribute('id', entity.id);
       img.setAttribute('height', '100%');
       img.setAttribute('alt', entity.id);
       img.setAttribute('lazysrc', entity.properties.src._value);
-
-      // Insert the element before our target element
+      img.entity = entity;
       target.appendChild(img);
+      // Observe for img visibility
       observer.observe(img);
     }
 
