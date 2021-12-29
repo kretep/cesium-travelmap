@@ -6,6 +6,7 @@ import "cesium/Build/Cesium/Widgets/widgets.css";
 import "./style.css";
 //import viewerCesiumNavigationMixin from 'cesium-navigation';
 import { loadTrack } from './tracks';
+import placeholderImage from './placeholder.png';
 
 // Your access token can be found at: https://cesium.com/ion/tokens.
 Cesium.Ion.defaultAccessToken = process.env.CESIUM_TOKEN;
@@ -15,7 +16,7 @@ Cesium.Ion.defaultAccessToken = process.env.CESIUM_TOKEN;
 const viewer = new Cesium.Viewer('cesiumContainer', {
   terrainProvider: Cesium.createWorldTerrain(),
   baseLayerPicker: false,
-  shouldAnimate: true
+  shouldAnimate: false // don't automatically play animation
 });
 
 
@@ -95,9 +96,66 @@ const positionProperty = new Cesium.SampledPositionProperty();
 // // Make the camera track this moving entity.
 // viewer.trackedEntity = airplaneEntity;
 
+const observers = [];
 
-loadTrack("data/combined.czml", viewer);
+const visibilityCallback = (entries, observer) => {
+  console.log(entries, observer);
+  //entries.target.setAttribute('src', entries.target.getAttribute('src2'));
+};
+
+loadTrack("data/combined.czml", viewer)
+  .then(() => {
+    // Get a sorted list of all photo entities
+    const allEntities = viewer.dataSources._dataSources[0].entities.values;
+    const entities = allEntities.filter(entity => entity.id.startsWith('photo'));
+    entities.sort((a, b) => { 
+      return a.properties.time._value.localeCompare(b.properties.time._value);
+    });
+
+    // The div we'll put the photos in
+    const target = document.querySelector('#photoTimeline');
+    
+    // Lazy loading for images
+    const observer = new IntersectionObserver((entries, observer) => {
+      for (let entry of entries) {
+        if (entry.isIntersecting) {
+          const img = entry.target;
+          if (img.src === placeholderImage) {
+            img.setAttribute('src', img.getAttribute('lazysrc'));
+          }
+        }
+      }
+    }, {
+      root: target, rootMargin: '0px', threshold: 0.01
+    });
+
+    // For each photo add a placeholder to the timeline
+    for (let entity of entities) {
+      const img = document.createElement('img');
+      img.src = placeholderImage;
+      img.setAttribute('id', entity.id);
+      img.setAttribute('height', '100%');
+      img.setAttribute('alt', entity.id);
+      img.setAttribute('lazysrc', entity.properties.src._value);
+
+      // Insert the element before our target element
+      target.appendChild(img);
+      observer.observe(img);
+    }
+
+  });
 
 viewer.camera.flyTo({
   destination: Cesium.Cartesian3.fromDegrees(13.862629, 60.050526, 50000.0)
+});
+
+console.log(viewer.dataSources);
+
+// Scrolling for photo timeline
+const element = document.querySelector('#photoTimeline');
+element.addEventListener('wheel', (event) => {
+  event.preventDefault();
+  element.scrollBy({
+    left: event.deltaY < 0 ? -30 : 30,
+  });
 });

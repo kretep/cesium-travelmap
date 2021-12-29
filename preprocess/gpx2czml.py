@@ -191,6 +191,10 @@ def create_photo_marker(id, row, track, config, dir_name):
             "outlineWidth": 2,
             "pixelSize": 20,
             "heightReference": "NONE"
+        },
+        "properties": {
+            "src": f'data/photos/{dir_name}/{row[HEADER_FILENAME]}',
+            "time": f'{row[HEADER_DATE_TIME]}'
         }
     }
 
