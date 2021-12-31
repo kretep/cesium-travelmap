@@ -11,14 +11,15 @@ import placeholderImage from './placeholder.png';
 // Your access token can be found at: https://cesium.com/ion/tokens.
 Cesium.Ion.defaultAccessToken = process.env.CESIUM_TOKEN;
 
-// STEP 4 CODE (replaces steps 2 and 3)
-// Keep your `Cesium.Ion.defaultAccessToken = 'your_token_here'` line from before here. 
+// Set up viewer
 const viewer = new Cesium.Viewer('cesiumContainer', {
   terrainProvider: Cesium.createWorldTerrain(),
   baseLayerPicker: false,
-  shouldAnimate: false // don't automatically play animation
+  shouldAnimate: false, // don't automatically play animation
+  infoBox: true
 });
-
+//viewer.infoBox.frame.removeAttribute('sandbox');
+//viewer.infoBox.frame.setAttribute('sandbox', 'allow-scripts allow-same-origin');
 
 // Set infobox css
 const frame = viewer.infoBox.frame;
@@ -30,6 +31,44 @@ frame.addEventListener('load', function () {
     frame.contentDocument.head.appendChild(cssLink);
 }, false);
 
+// let container; // = document.createElement('div');
+// //template.className = 'cesium-infoBox-description';
+// //template.innerHTML = "<p> hi</p>";
+
+// viewer.infoBox.frame.addEventListener('load', () => {
+//   //viewer.infoBox.frame.contentDocument.body.innerHTML = "<p>HIIII</p>";
+//   //viewer.infoBox.frame.contentDocument.body.innerHTML = '';
+//   container = viewer.infoBox.frame.contentDocument.createElement('div');
+//   container.className = 'hi';
+//   const infoBox = viewer.infoBox.frame.contentDocument.getElementsByClassName('cesium-infoBox-description')[0];
+//   infoBox.appendChild(container);
+//   //viewer.infoBox.frame.contentDocument.body.appendChild(template);
+// }, false);
+
+    // const element = frame.contentDocument.createElement('template');
+    // element.innerHTML = "<p>test test</p>";
+    // const frame = viewer.infoBox.frame;
+    // frame.contentDocument.body.innerHTML="<p>HIIIII</p>";
+
+
+
+// console.log(viewer._element);
+// const template = document.querySelector('#infoBox').content.cloneNode(true);
+// //const viewerElement = document.getElementsByClassName('.cesium-viewer')[0];
+// viewer._element.appendChild(template);
+
+
+const updateInfobox = entity => {
+  // const template = viewer.infoBox.frame.contentDocument.createElement('template');
+  // template.innerHTML = `<img src="${entity.properties.src}" width="100%" height="100%"/>`;
+  // container.innerHTML = ''
+  // console.log(template);
+  // container.appendChild(template.content.firstChild);
+  // viewer.infoBox.frame.src = "data:text/html;charset=utf-8," + escape('<html><head><link href="http://localhost:8081/Widgets/InfoBox/InfoBoxDescription.css" rel="stylesheet" type="text/css"><link href="http://localhost:8081/infobox.css" rel="stylesheet" type="text/css"></head><body><div class="cesium-infoBox-description"><div class="hi"><img src="data/photos/bas/20190807_134638_P1310392_Bas-Wetter.jpg" width="100%" height="100%"></div></div></body></html>');
+  console.log(viewer.infoBox.viewModel);
+  viewer.infoBox.viewModel.maxHeight = 500;
+  //doenst work: viewer.infoBox.viewModel.description = '<div class="hi"><img src="data/photos/bas/20190807_134638_P1310392_Bas-Wetter.jpg" width="100%" height="100%"></div>';
+}
 
 // Initialize cesium-navigation plugin
 const options = {};
@@ -137,6 +176,8 @@ const selectPhotoEntity = entity => {
     photoTimelineToEntity(entity);
     timelineToEntity(entity);
     flyToEntity(entity);
+    entity.description = '<button>Previous</button><img src="data/photos/bas/20190807_134638_P1310392_Bas-Wetter.jpg"><button>Next</button>';
+    updateInfobox(entity);
   }
   else {
     // Effectively prevents non-photo entities from being selected
@@ -189,7 +230,8 @@ loadTrack("data/combined.czml", viewer)
   });
 
 viewer.camera.flyTo({
-  destination: Cesium.Cartesian3.fromDegrees(13.862629, 60.050526, 50000.0)
+  destination: Cesium.Cartesian3.fromDegrees(13.862629, 60.050526, 50000.0),
+  duration: 1.0
 });
 
 console.log(viewer.dataSources);

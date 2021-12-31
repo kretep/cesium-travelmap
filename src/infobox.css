@@ -8,7 +8,11 @@ html, body {
 }
 
 div {
-  display: inline-block;
-  width: 640px;
+  display: flex;
   height: 480px;
+}
+
+div img {
+  width: 80%;
+  height: auto;
 }

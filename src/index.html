@@ -1,12 +1,40 @@
 <html>
-    <head>
-        <meta charset="utf-8">
-        <meta http-equiv="X-UA-Compatible" content="IE=edge">
-        <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, minimum-scale=1, user-scalable=no">
-        <title>Travel Map Visualizer</title>
-    </head>
-    <body>
-        <div id="cesiumContainer"></div>
-        <div id="photoTimeline"></div>
-    </body>
+
+<head>
+    <meta charset="utf-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport"
+        content="width=device-width, initial-scale=1, maximum-scale=1, minimum-scale=1, user-scalable=no">
+    <title>Travel Map Visualizer</title>
+</head>
+
+<body>
+    <div id="cesiumContainer"></div>
+    <!-- <div class="cesium-infoBox-description"><div class="hi"><img src="data/photos/bas/20190807_134638_P1310392_Bas-Wetter.jpg" width="100%" height="100%"></div></div> -->
+
+
+    <div id="photoTimeline"></div>
+
+
+    <template id="infoBox">
+    <div class="cesium-viewer-infoBoxContainer">
+        <div class="cesium-infoBox cesium-infoBox-bodyless cesium-infoBox-visible"
+            data-bind="css: { &quot;cesium-infoBox-visible&quot; : showInfo, &quot;cesium-infoBox-bodyless&quot; : _bodyless }">
+            <div class="cesium-infoBox-title" data-bind="text: titleText">Bas, 2019-08-07 12:21:51+02:00 (location
+                estimated)</div>
+                
+            <button type="button" class="cesium-infoBox-close"
+                data-bind="click: function () { closeClicked.raiseEvent(this); }">×</button>
+
+            <div class="cesium-infoBox-description"><div class="hi"><img src="data/photos/bas/20190807_134638_P1310392_Bas-Wetter.jpg" width="100%" height="100%"></div></div>
+                <!-- <iframe
+                class="cesium-infoBox-iframe" sandbox="allow-same-origin allow-popups allow-forms"
+                data-bind="style : { maxHeight : maxHeightOffset(40) }" allowfullscreen="true" src="about:blank"
+                style="max-height: 1178px; height: 0px;"></iframe> -->
+        </div>
+    </div>
+    </template>
+
+</body>
+
 </html>
