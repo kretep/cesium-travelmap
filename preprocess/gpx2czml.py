@@ -173,20 +173,19 @@ def create_photo_marker(id, row, track, config, dir_name):
     coordinates, isEstimated = get_photo_coordinates(row, track)
     if coordinates is None:
         return None
-    description = f'<div>{attribution}, {row[HEADER_DATE_TIME]}<br /><img src="data/photos/{dir_name}/{row[HEADER_FILENAME]}" width="100%" height="100%" style="float:left; margin: 0 1em 1em 0;" /></div><p>testing</p>'
+    title = f'{attribution}, {row[HEADER_DATE_TIME]} (location {"estimated" if isEstimated else "GPS"})';
     return {
         "id": id,
-        "name": f'{id} (location {"estimated" if isEstimated else "GPS"})',
-        "description": description,
+        "name": title,
         "position": {
             "cartographicDegrees": coordinates
         },
         "point": {
             "color": {
-                "rgba": [50, 200, 50, 50]
+                "rgba": [0, 50, 200, 100]
             },
             "outlineColor": {
-                "rgba": [200, 200, 0, 255]
+                "rgba": [200, 200, 200, 255]
             },
             "outlineWidth": 2,
             "pixelSize": 20,
