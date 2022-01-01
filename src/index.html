@@ -16,13 +16,12 @@
     <template id="infoBox">
     <div class="cesium-viewer-infoBoxContainer">
         <div class="cesium-infoBox cesium-infoBox-bodyless cesium-infoBox-visible"
-            data-bind="css: { &quot;cesium-infoBox-visible&quot; : showInfo, &quot;cesium-infoBox-bodyless&quot; : _bodyless }">
+                style="display: none;">
             <div id="selectedPhotoCaption" class="cesium-infoBox-title"></div>
-            <button type="button" class="cesium-infoBox-close"
-                data-bind="click: function () { closeClicked.raiseEvent(this); }">×</button>
+            <button type="button" class="cesium-infoBox-close">×</button>
             <div class="cesium-infoBox-description">
-                <button class="btn-next">&gt;</button>
                 <button class="btn-prev">&lt;</button>
+                <button class="btn-next">&gt;</button>
                 <img id="selectedPhoto" src="" />
             </div>
         </div>

@@ -11,12 +11,16 @@ import placeholderImage from './placeholder.png';
 // Your access token can be found at: https://cesium.com/ion/tokens.
 Cesium.Ion.defaultAccessToken = process.env.CESIUM_TOKEN;
 
+// Some variables
+let photoEntities = [];
+let currentPhotoEntity = undefined;
+
 // Set up viewer
 const viewer = new Cesium.Viewer('cesiumContainer', {
   terrainProvider: Cesium.createWorldTerrain(),
   baseLayerPicker: false,
   shouldAnimate: false, // don't automatically play animation
-  infoBox: false
+  infoBox: false        // we'll use a custom infobox
 });
 
 // Put the custom infobox inside the cesium viewer element for it to be rendered properly
@@ -27,6 +31,7 @@ viewer._element.appendChild(template);
 const updateInfobox = entity => {
   document.querySelector('#selectedPhoto').src = entity.properties.src;
   document.querySelector('#selectedPhotoCaption').innerHTML = entity.name;
+  document.querySelector(".cesium-infoBox").style.display = '';
 }
 
 // Initialize cesium-navigation plugin
@@ -35,7 +40,6 @@ const options = {};
 options.enableCompass = true;
 options.enableZoomControls = true;
 options.enableDistanceLegend = true;
-
 options.units = 'kilometers' // default is kilometers;
 // turf helpers units https://github.com/Turfjs/turf/blob/v5.1.6/packages/turf-helpers/index.d.ts#L20
 //options.distanceLabelFormatter = (convertedDistance, units : Units): string => { ... } // custom label formatter
@@ -122,16 +126,46 @@ const timelineToEntity = entity => {
   viewer.clock.currentTime = julianDate;
 }
 
+const previousPhoto = () => {
+  const index = photoEntities.indexOf(currentPhotoEntity);
+  if (index === -1) return;
+  const newIndex = index > 0 ? index - 1 : photoEntities.length - 1;
+  currentPhotoEntity = photoEntities[newIndex];
+  selectPhotoEntity(currentPhotoEntity);
+}
+document.querySelector('.btn-prev').onclick = previousPhoto;
+
+const nextPhoto = () => {
+  const index = photoEntities.indexOf(currentPhotoEntity);
+  if (index === -1) return;
+  const newIndex = (index + 1) % photoEntities.length;
+  currentPhotoEntity = photoEntities[newIndex];
+  selectPhotoEntity(currentPhotoEntity);
+}
+document.querySelector('.btn-next').onclick = nextPhoto;
+
+// Arrow key handler
+document.querySelector('body').addEventListener('keydown', event => {
+  if (event.key === "ArrowLeft") previousPhoto();
+  if (event.key === "ArrowRight") nextPhoto();
+});
+
+const closeInfoBox = () => {
+  currentPhotoEntity = undefined;
+  document.querySelector(".cesium-infoBox").style.display = 'none';
+}
+document.querySelector('.cesium-infoBox-close').onclick = closeInfoBox;
+
+
 // Handler for selecting a timeline photo (img)
 const selectTimelinePhoto = entity => {
-  timelineToEntity(entity);
-  viewer.selectedEntity = entity;
-  flyToEntity(entity);
+  viewer.selectedEntity = entity; // this will trigger selectPhotoEntity
 };
 
 // Handler for map selection of an entity
 const selectPhotoEntity = entity => {
   if (Cesium.defined(entity) && entity.id.startsWith('photo_')) {
+    currentPhotoEntity = entity;
     photoTimelineToEntity(entity);
     timelineToEntity(entity);
     flyToEntity(entity);
@@ -144,12 +178,22 @@ const selectPhotoEntity = entity => {
 }
 viewer.selectedEntityChanged.addEventListener(selectPhotoEntity);
 
+// Scrolling for photo timeline
+const element = document.querySelector('#photoTimeline');
+element.addEventListener('wheel', (event) => {
+  event.preventDefault();
+  element.scrollBy({
+    left: event.deltaY < 0 ? -30 : 30,
+  });
+});
+
+// Load the data, filter, sort and display the photos
 loadTrack("data/combined.czml", viewer)
   .then(() => {
     // Get a sorted list of all photo entities
     const allEntities = viewer.dataSources._dataSources[0].entities.values;
-    const entities = allEntities.filter(entity => entity.id.startsWith('photo'));
-    entities.sort((a, b) => { 
+    photoEntities = allEntities.filter(entity => entity.id.startsWith('photo'));
+    photoEntities.sort((a, b) => { 
       return a.properties.time._value.localeCompare(b.properties.time._value);
     });
 
@@ -171,7 +215,7 @@ loadTrack("data/combined.czml", viewer)
     });
 
     // For each photo add a placeholder to the timeline
-    for (let entity of entities) {
+    for (let entity of photoEntities) {
       const img = document.createElement('img');
       img.src = placeholderImage;
       img.onclick = event => selectTimelinePhoto(event.target.entity);
@@ -187,18 +231,8 @@ loadTrack("data/combined.czml", viewer)
 
   });
 
+// Fly to home view
 viewer.camera.flyTo({
   destination: Cesium.Cartesian3.fromDegrees(13.862629, 60.050526, 50000.0),
   duration: 1.0
-});
-
-console.log(viewer.dataSources);
-
-// Scrolling for photo timeline
-const element = document.querySelector('#photoTimeline');
-element.addEventListener('wheel', (event) => {
-  event.preventDefault();
-  element.scrollBy({
-    left: event.deltaY < 0 ? -30 : 30,
-  });
 });
