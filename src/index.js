@@ -236,8 +236,16 @@ loadTrack(czml_path, viewer)
 
   });
 
-// Fly to home view
-viewer.camera.flyTo({
-  destination: Cesium.Cartesian3.fromDegrees(13.862629, 60.050526, 50000.0),
-  duration: 1.0
-});
+// Load config
+const configPath = `data/${key}/config.json`;
+fetch(configPath)
+  .then(result => result.json())
+  .then(config => {
+
+    // Fly to home view
+    const homeCoords = config.home;
+    viewer.camera.flyTo({
+      destination: Cesium.Cartesian3.fromDegrees(...homeCoords),
+      duration: 1.0
+    });
+  });
