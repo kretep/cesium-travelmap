@@ -11,6 +11,9 @@ import placeholderImage from './placeholder.png';
 // Your access token can be found at: https://cesium.com/ion/tokens.
 Cesium.Ion.defaultAccessToken = process.env.CESIUM_TOKEN;
 
+const urlSearchParams = new URLSearchParams(window.location.search);
+const key = urlSearchParams.get('key');
+
 // Some variables
 let photoEntities = [];
 let currentPhotoEntity = undefined;
@@ -131,7 +134,7 @@ const previousPhoto = () => {
   if (index === -1) return;
   const newIndex = index > 0 ? index - 1 : photoEntities.length - 1;
   currentPhotoEntity = photoEntities[newIndex];
-  selectPhotoEntity(currentPhotoEntity);
+  viewer.selectedEntity = currentPhotoEntity;
 }
 document.querySelector('.btn-prev').onclick = previousPhoto;
 
@@ -140,7 +143,7 @@ const nextPhoto = () => {
   if (index === -1) return;
   const newIndex = (index + 1) % photoEntities.length;
   currentPhotoEntity = photoEntities[newIndex];
-  selectPhotoEntity(currentPhotoEntity);
+  viewer.selectedEntity = currentPhotoEntity;
 }
 document.querySelector('.btn-next').onclick = nextPhoto;
 
@@ -162,7 +165,8 @@ const selectTimelinePhoto = entity => {
   viewer.selectedEntity = entity; // this will trigger selectPhotoEntity
 };
 
-// Handler for map selection of an entity
+// Handler for map selection of an entity.
+// Don't call directly, but set viewer.selectedEntity to trigger it.
 const selectPhotoEntity = entity => {
   if (Cesium.defined(entity) && entity.id.startsWith('photo_')) {
     currentPhotoEntity = entity;
@@ -188,7 +192,8 @@ element.addEventListener('wheel', (event) => {
 });
 
 // Load the data, filter, sort and display the photos
-loadTrack("data/combined.czml", viewer)
+const czml_path = `data/${key}/combined.czml`;
+loadTrack(czml_path, viewer)
   .then(() => {
     // Get a sorted list of all photo entities
     const allEntities = viewer.dataSources._dataSources[0].entities.values;

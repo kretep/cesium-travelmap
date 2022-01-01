@@ -22,9 +22,11 @@ The built application can be statically served, e.g. with nginx
 
 ## Preprocess data
 
-Put the gpx files in DATA_DIR/tracks.
+DATA_DIR is the base data directory, KEY_DIR is used to support multiple datasets on the same server. The name of KEY_DIR could be generated randomly to make it harder to find.
 
-Put series of photos in separate folders. One folder for each author or source is recommended. Each of these folders should be under DATA_DIR/photos.
+Put the gpx files in DATA_DIR/KEY_DIR/tracks.
+
+Put series of photos in separate folders. One folder for each author or source is recommended. Each of these folders should be under DATA_DIR/KEY_DIR/photos/.
 
 For each folder of photos, run exiftool; modify or look at preprocess/run_exif.sh for the arguments. This will generate a csv file with all the required information extracted from the photos.
 
@@ -39,9 +41,9 @@ delta.minutes=0
 
 Execute the preprocessing script:
 ```
-python3 gpx2czml.py
+python3 gpx2czml.py key
 ```
-This will merge all track and photo information into one CZML file (DATA_DIR/combined.czml) that can be visualized.
+This will merge all track and photo information into one CZML file (DATA_DIR/KEY_DIR/combined.czml) that can be visualized.
 
 ## Run the visualizer
 

@@ -4,6 +4,7 @@ import numpy as np
 import gpxpy
 import json
 import os
+import sys
 import dotenv
 from bisect import bisect_left, bisect_right
 from datetime import datetime, timedelta
@@ -174,6 +175,7 @@ def create_photo_marker(id, row, track, config, dir_name):
     if coordinates is None:
         return None
     title = f'{attribution}, {row[HEADER_DATE_TIME]} (location {"estimated" if isEstimated else "GPS"})';
+    base_path = get_datadir(True) # relative path starting at data/
     return {
         "id": id,
         "name": title,
@@ -192,7 +194,7 @@ def create_photo_marker(id, row, track, config, dir_name):
             "heightReference": "NONE"
         },
         "properties": {
-            "src": f'data/photos/{dir_name}/{row[HEADER_FILENAME]}',
+            "src": f'{base_path}/photos/{dir_name}/{row[HEADER_FILENAME]}',
             "time": f'{row[HEADER_DATE_TIME].isoformat()}'
         }
     }
@@ -259,8 +261,10 @@ def process_photos(dir_name, czml, combined_tracks):
         if marker is not None:
             czml.append(marker)
 
-def get_datadir():
-    return os.environ['DATA_DIR']
+def get_datadir(relative=False):
+    base_dir = 'data' if relative else os.environ['DATA_DIR']
+    key_dir = sys.argv[1] if len(sys.argv) > 1 else ''
+    return f'{base_dir}/{key_dir}'
 
 if __name__ == "__main__":
     dotenv.load_dotenv()
