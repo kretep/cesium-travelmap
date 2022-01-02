@@ -175,12 +175,15 @@ def process_track(df, czml, index):
     point_object = create_point(f'point_{index}', df, coordinate_list, get_color(6))
     czml.append(point_object)
 
+LOCATION_SOURCES = ['exif', 'gpx', 'manual']
+
 def create_photo_marker(id, row, track, config, dir_name):
     attribution = config.get('global', 'attribution')
-    coordinates, isEstimated = get_photo_coordinates(row, track)
+    coordinates, location_source = get_photo_coordinates(row, track, config)
     if coordinates is None:
+        print("Discarding ", f'{dir_name}/{row[HEADER_FILENAME]}')
         return None
-    title = f'{attribution}, {row[HEADER_DATE_TIME]} (location {"estimated" if isEstimated else "GPS"})';
+    title = f'{attribution}, {row[HEADER_DATE_TIME]} (location {LOCATION_SOURCES[location_source]})';
     base_path = get_datadir(True) # relative path starting at data/
     return {
         "id": id,
@@ -205,14 +208,20 @@ def create_photo_marker(id, row, track, config, dir_name):
         }
     }
 
-def get_photo_coordinates(photo_row, track):
+def get_photo_coordinates(photo_row, track, config):
+    # 1) Read coordinates from EXIF data
     lat = photo_row[HEADER_LAT]
     lon = photo_row[HEADER_LON]
     alt = photo_row[HEADER_ALT]
     if lat != '-' and lon != '-' and alt != '-':
         return [float(lon), float(lat), float(alt)], 0
-    
-    # No GPS data found; use photo time and GPS track to determine position
+
+    # 2) See if there is a manual entry for this photo
+    coords = config.get('manual_coords', photo_row[HEADER_FILENAME], fallback=None)
+    if not coords is None:
+        return list(map(float, coords.split(','))), 2
+
+    # 3) No GPS data found; use photo time and GPS track to determine position
     tt = photo_row[HEADER_DATE_TIME].timestamp()
     i0, i1 = get_closests(track, 'timestamp', tt)
     track_row0 = track.iloc[i0]
