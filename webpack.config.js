@@ -13,23 +13,25 @@ module.exports = [{
     },
     output: {
         filename: '[name].js',
-        path: path.resolve(__dirname, 'dist')
+        path: path.resolve(__dirname, 'dist'),
+        publicPath: "/"
     },
     devtool: 'eval',
     node: {
-        // Resolve node module use of fs
-        fs: "empty",
-        Buffer: false,
-        http: "empty",
-        https: "empty",
-        zlib: "empty"
     },
     resolve: {
         mainFields: ['module', 'main'],
         alias: {
             // CesiumJS module name
             //cesium: path.resolve(__dirname, cesiumSource)
-            "cesium-navigation": path.resolve(__dirname, 'node_modules/@cmcleese/cesium-navigation/dist')
+            //"cesium-navigation": path.resolve(__dirname, 'node_modules/@cmcleese/cesium-navigation/dist')
+        },
+        fallback: {
+            // Resolve node module use of fs
+            fs: false,
+            http: false,
+            https: false,
+            zlib: false
         }
     },
     module: {
@@ -61,9 +63,10 @@ module.exports = [{
         }),
         new Dotenv()
     ],
-
     // development server options
-    devServer: {
-        contentBase: path.join(__dirname, "dist")
-    }
+    // devServer: {
+    //     static: {
+    //         directory: path.join(__dirname, "dist")
+    //     }
+    // },
 }];

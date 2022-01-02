@@ -15,12 +15,6 @@ module.exports = [{
         path: path.resolve(__dirname, 'dist')
     },
     node: {
-        // Resolve node module use of fs
-        fs: "empty",
-        Buffer: false,
-        http: "empty",
-        https: "empty",
-        zlib: "empty"
     },
     resolve: {
         mainFields: ['module', 'main']
@@ -50,7 +44,7 @@ module.exports = [{
         }]
     },
     optimization: {
-        usedExports: true
+        usedExports: true,
     },
     plugins: [
         new HtmlWebpackPlugin({
@@ -67,5 +61,10 @@ module.exports = [{
             ],
         }),
         new webpack.EnvironmentPlugin(['CESIUM_BASE_URL', 'CESIUM_TOKEN'])
-    ]
+    ],
+    devServer: {
+        static: {
+            directory: path.join(__dirname, "dist")
+        }
+    },
 }];

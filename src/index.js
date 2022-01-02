@@ -2,7 +2,7 @@
 window.CESIUM_BASE_URL = process.env.CESIUM_BASE_URL;
 
 import * as Cesium from 'cesium';
-import "cesium/Build/Cesium/Widgets/widgets.css";
+import "./widgets.css"; // Copied from cesium/Build/Cesium/Widgets/widgets.css, but it is not exported properly, giving problems with webpack
 import "./style.css";
 //import viewerCesiumNavigationMixin from 'cesium-navigation';
 import { loadTrack } from './tracks';
