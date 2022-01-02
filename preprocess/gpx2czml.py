@@ -148,6 +148,12 @@ def get_color(index):
 def load_track(path):
     gpx_file = open(path, 'r')
     gpx = gpxpy.parse(gpx_file)
+
+    # Smoothen and resample track
+    for i in range(10):
+        gpx.smooth(vertical=True, horizontal=True, remove_extremes=True)
+    gpx.simplify(max_distance=1)
+
     return gpx_to_dataframe(gpx)
 
 def load_tracks(tracks_dir):
