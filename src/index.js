@@ -5,7 +5,6 @@ import * as Cesium from 'cesium';
 import "cesium/Build/Cesium/Widgets/widgets.css";
 import "./style.css";
 //import viewerCesiumNavigationMixin from 'cesium-navigation';
-import { loadTrack } from './tracks';
 import placeholderImage from './placeholder.png';
 
 // Your access token can be found at: https://cesium.com/ion/tokens.
@@ -128,7 +127,9 @@ element.addEventListener('wheel', (event) => {
 
 // Load the data, filter, sort and display the photos
 const czml_path = `data/${key}/combined.czml`;
-loadTrack(czml_path, viewer)
+fetch(czml_path)
+  .then(response => response.json())
+  .then(czml => viewer.dataSources.add(Cesium.CzmlDataSource.load(czml)))
   .then(() => {
     // Get a sorted list of all photo entities
     const allEntities = viewer.dataSources._dataSources[0].entities.values;
