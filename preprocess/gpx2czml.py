@@ -5,6 +5,7 @@ import gpxpy
 import json
 import os
 import sys
+import subprocess
 import dotenv
 from bisect import bisect_left, bisect_right
 from datetime import datetime, timedelta
@@ -250,7 +251,6 @@ def get_closests(df, col, val):
 
 def process_photos(dir_name, czml, combined_tracks):
     photo_dir = os.path.join(get_datadir(), 'photos', dir_name)
-    print(f"Processing photos: ${photo_dir}")
 
     # Read config
     config = configparser.RawConfigParser()
@@ -260,8 +260,17 @@ def process_photos(dir_name, czml, combined_tracks):
     delta_hours = int(config.get('global', 'delta.hours', fallback=0))
     delta_minutes = int(config.get('global', 'delta.minutes', fallback=0))
 
-    # Read and preprocess csv (exiftool output)
+    # Execute exiftool if photos.csv does not exist yet
     csv_path = os.path.join(photo_dir, 'photos.csv')
+    if not os.path.exists(csv_path):
+        print("Executing exiftool for", photo_dir)
+        exiftool_path = os.environ['EXIFTOOL_DIR']
+        os.chdir(exiftool_path)
+        exif_call = f'./exiftool -filename -gpslatitude# -gpslongitude# -gpsaltitude# -gpsdatestamp -gpstimestamp -datetimeoriginal -createdate -dateFormat "%Y-%m-%d %H:%M:%S%z" -T -csv --ext csv {photo_dir} > {csv_path}'
+        subprocess.call(exif_call, shell=True)
+
+    # Read and preprocess csv (exiftool output)
+    print(f"Processing photos: ${photo_dir}")
     df = pd.read_csv(csv_path)
     df = df.rename(str.lower, axis='columns')
     #df['CreateDate'] = df['CreateDate'].apply(lambda s: datetime.strptime(s, DATETIME_FORMAT) + timedelta(hours=delta_hours, minutes=delta_minutes))
