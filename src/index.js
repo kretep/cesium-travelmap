@@ -21,7 +21,7 @@ let currentPhotoEntity = undefined;
 // Set up viewer
 const viewer = new Cesium.Viewer('cesiumContainer', {
   terrainProvider: Cesium.createWorldTerrain(),
-  baseLayerPicker: false,
+  baseLayerPicker: true,
   shouldAnimate: false, // don't automatically play animation
   infoBox: false        // we'll use a custom infobox
 });
@@ -168,8 +168,15 @@ fetch(czml_path)
       target.appendChild(img);
       // Observe for img visibility
       observer.observe(img);
+
+      // Set the disableDepthTestDistance to a high number, but not INFINITY. The effect is that markers are not clipped
+      // at their edges, but are hidden behind terrain (mountains). Setting to INFINITY would do no depth testing at all
+      // (similar to viewer.scene.globe.depthTestAgainstTerrain = false)
+      entity.point.disableDepthTestDistance = new Cesium.ConstantProperty(100000);
     }
 
+    // This combines well with entity.point.disableDepthTestDistance of the photo markers
+    viewer.scene.globe.depthTestAgainstTerrain = true;
   });
 
 // Load config
@@ -185,3 +192,23 @@ fetch(configPath)
       duration: 1.0
     });
   });
+
+
+// Click the globe to see the cartographic position
+const handler = new Cesium.ScreenSpaceEventHandler(viewer.scene.canvas);
+handler.setInputAction(event => {
+  var cartesian = viewer.camera.pickEllipsoid(
+    event.position,
+    viewer.scene.globe.ellipsoid
+  );
+  if (cartesian) {
+    var cartographic = Cesium.Cartographic.fromCartesian(cartesian);
+    var longitudeString = Cesium.Math.toDegrees(
+      cartographic.longitude
+    ).toFixed(4);
+    var latitudeString = Cesium.Math.toDegrees(
+      cartographic.latitude
+    ).toFixed(4);
+    console.log(longitudeString, latitudeString, cartographic.height);
+  }
+}, Cesium.ScreenSpaceEventType.LEFT_CLICK);

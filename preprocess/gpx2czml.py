@@ -48,11 +48,11 @@ def gpx_to_dataframe(gpx):
     output['timestamp'] = timestamps
     return output
 
-def create_coordinate_list(df_input):
+def create_coordinate_list(df_input, includeTimestep=True):
     results = []
     timestep = 0
     for i in df_input.index:
-        results.append(timestep)
+        if includeTimestep: results.append(timestep)
         results.append(df_input.longitude.iloc[i])
         results.append(df_input.latitude.iloc[i])
         results.append(df_input.elevation.iloc[i])
@@ -63,41 +63,35 @@ def create_coordinate_list(df_input):
 def format_datetime(datetime):
     return str(datetime).replace(" ", "T").replace(".000", "Z")
 
-def create_path(path_id, df_input, coordinate_list, color):
-    path_starttime = format_datetime(min(df_input['starttime']))
-    path_stoptime = format_datetime(max(df_input['stoptime']))
-    path_availability = path_starttime + "/" + path_stoptime
+def create_polyline(path_id, df_input, color):
+    coordinate_list = create_coordinate_list(df_input, includeTimestep=False)
     return {
         "id": path_id,
-        "availability": path_availability,
-        "position": {
-            "epoch": path_starttime,
-            "cartographicDegrees": coordinate_list
-        },
-        "path": {
+        "polyline": {
+            "positions": {
+                "cartographicDegrees": coordinate_list
+            },
             "material": {
                 "polylineOutline": {
                     "color": {
                         "rgba": color
                     },
+                    "outlineWidth": 2,
                     "outlineColor": {
-                        "rgba": color
+                        "rgba": [0, 0, 0, 160]
                     },
-                    "outlineWidth": 0
                 }
             },
             "width": 6,
-            # "leadTime": 10,
-            # "trailTime": 10000,
-            "resolution": 5,
-            "heightReference": "RELATIVE_TO_GROUND"
+            "clampToGround": True,
         }
     }
 
-def create_point(point_id, df_input, coordinate_list, color):
+def create_point(point_id, df_input, color):
     point_starttime = format_datetime(min(df_input['starttime']))
     point_stoptime = format_datetime(max(df_input['stoptime']))
     point_availability = point_starttime + "/" + point_stoptime
+    coordinate_list = create_coordinate_list(df_input, includeTimestep=True)
     return {
         "id": point_id,
         "availability": point_availability,
@@ -114,7 +108,7 @@ def create_point(point_id, df_input, coordinate_list, color):
             },
             "outlineWidth": 6,
             "pixelSize": 8,
-            "heightReference": "NONE"
+            "heightReference": "CLAMP_TO_GROUND"
         }   
     }
 
@@ -165,15 +159,13 @@ def load_tracks(tracks_dir):
     return gpx_dfs
 
 def process_track(df, czml, index):
-    # Coordinates used for both path and point
-    coordinate_list = create_coordinate_list(df)
 
-    # Path
-    path_object = create_path(f'path_{index}', df, coordinate_list, get_color(index))
+    # Polyline
+    path_object = create_polyline(f'line_{index}', df, get_color(index))
     czml.append(path_object)
 
     # Point
-    point_object = create_point(f'point_{index}', df, coordinate_list, get_color(6))
+    point_object = create_point(f'point_{index}', df, get_color(6))
     czml.append(point_object)
 
 LOCATION_SOURCES = ['exif', 'gpx', 'manual']
@@ -190,7 +182,7 @@ def create_photo_marker(id, row, track, config, dir_name):
         "id": id,
         "name": title,
         "position": {
-            "cartographicDegrees": coordinates
+            "cartographicDegrees": [coordinates[0], coordinates[1], 2] # reset height
         },
         "point": {
             "color": {
@@ -201,7 +193,7 @@ def create_photo_marker(id, row, track, config, dir_name):
             },
             "outlineWidth": 2,
             "pixelSize": 20,
-            "heightReference": "NONE"
+            "heightReference": "RELATIVE_TO_GROUND"
         },
         "properties": {
             "src": f'{base_path}/photos/{dir_name}/{row[HEADER_FILENAME]}',
