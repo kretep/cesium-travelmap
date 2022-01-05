@@ -201,7 +201,7 @@ def create_photo_marker(id, row, track, config, dir_name):
         "id": id,
         "name": title,
         "position": {
-            "cartographicDegrees": [coordinates[0], coordinates[1], 2] # reset height
+            "cartographicDegrees": [coordinates[0], coordinates[1], 0] # reset height to prevent floating markers
         },
         "point": {
             "color": {
@@ -212,7 +212,7 @@ def create_photo_marker(id, row, track, config, dir_name):
             },
             "outlineWidth": 2,
             "pixelSize": 20,
-            "heightReference": "RELATIVE_TO_GROUND"
+            "heightReference": "CLAMP_TO_GROUND"
         },
         "properties": {
             "src": f'{base_path}/photos/{dir_name}/{row[HEADER_FILENAME]}',

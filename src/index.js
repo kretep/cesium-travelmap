@@ -7,6 +7,7 @@ import "./style.css";
 //import viewerCesiumNavigationMixin from 'cesium-navigation';
 import placeholderImage from './placeholder.png';
 import Cartesian3 from 'cesium/Source/Core/Cartesian3';
+import Cartographic from 'cesium/Source/Core/Cartographic';
 
 // Your access token can be found at: https://cesium.com/ion/tokens.
 Cesium.Ion.defaultAccessToken = process.env.CESIUM_TOKEN;
@@ -31,7 +32,8 @@ viewer._element.appendChild(infobox);
 // Some variables
 let photoEntities; // entityList
 let trackEntities; // entityList
-let lastSelectedEntity; // tracked to determine camera position when flying to a new entity
+let lastSelectedFlyToEntity; // tracked to determine camera position when flying to a new entity
+let lastSelectedInfoboxEntity;
 
 // "Class" that keeps track of a list of entities and the selected entity,
 // has previous/next functions that also update the viewer.selectedEntity
@@ -59,6 +61,7 @@ const entityList = (entities) => {
 
 // Updates the infobox with the selected photo
 const updateInfobox = entity => {
+  lastSelectedInfoboxEntity = entity;
   document.querySelector('#track-metadata').style.display = 'none'; // hide metadata
   document.querySelector('#selectedPhoto').src = entity.properties.src;
   document.querySelector('#selectedPhotoCaption').innerHTML = entity.name;
@@ -67,6 +70,7 @@ const updateInfobox = entity => {
 }
 
 const updateInfoboxTrackEntity = entity => {
+  lastSelectedInfoboxEntity = entity;
   document.querySelector("#selectedPhoto").style.display = 'none'; // hide photo
   document.querySelector('#selectedPhotoCaption').innerHTML = entity.id;
   const table = document.querySelector("#track-metadata")
@@ -118,44 +122,48 @@ const updateInfoboxTrackEntity = entity => {
 const flyToEntity = entity => {
   if (entity.position === undefined) return;
 
-  const position = Cesium.Cartographic.fromCartesian(entity.position._value);
-  const height = viewer.camera.positionCartographic.height;
-  
-  if (lastSelectedEntity === undefined) {
-    // Move to entity position, but keep camera height
-    viewer.camera.flyTo({
-      destination: Cesium.Cartesian3.fromRadians(
-        position.longitude,
-        position.latitude,
-        height
-      ),
-      duration: 1.0
-    });
+  // Correct the height above terrain for an entity, since they are clamped to ground, which makes height = 0
+  //TODO: is there no obvious way to handle this??
+  const correctHeight = cartesian3 => {
+    const carto = Cartographic.fromCartesian(cartesian3);
+    const height = viewer.scene.globe.getHeight(carto);
+    return Cartesian3.fromRadians(carto.longitude, carto.latitude, height);
+  }
+
+  // If lastSelectedFlyToEntity was reset (because of camera movement), we use the terrain
+  // at the center of the viewport to determine the viewing distance, otherwise we
+  // use the last selected entity
+  let oldLookAtPosition;
+  if (lastSelectedFlyToEntity === undefined) {
+    const w = document.getElementById('cesiumContainer').scrollWidth;
+    const h = document.getElementById('cesiumContainer').scrollHeight;
+    const ray = viewer.camera.getPickRay(new Cesium.Cartesian2(w/2, 0.5*h));
+    oldLookAtPosition = viewer.scene.globe.pick(ray, viewer.scene);
   }
   else {
-    // Move toward new entity, but keep same orientation
-    const positionOffset = Cesium.Cartesian3.subtract(viewer.camera.positionWC, lastSelectedEntity.position._value, new Cartesian3(0, 0, 0));
-    const newPosition = Cesium.Cartesian3.add(entity.position._value, positionOffset, new Cartesian3(0, 0, 0));
-    const heading = viewer.camera.heading;
-    const pitch = viewer.camera.pitch;
-    viewer.camera.flyTo({
-      destination: newPosition,
-      orientation : {
-          heading, // : Cesium.Math.toRadians(175.0),
-          pitch, // : Cesium.Math.toRadians(-35.0),
-          roll : 0.0
-      },
-      duration: 1.0
-    });
+    oldLookAtPosition = correctHeight(lastSelectedFlyToEntity.position._value);
   }
-  lastSelectedEntity = entity;
+
+  // Move toward the new entity, but keep same orientation
+  const entityPos = correctHeight(entity.position._value);
+  const positionOffset = Cesium.Cartesian3.subtract(viewer.camera.positionWC, oldLookAtPosition, new Cartesian3(0, 0, 0));
+  const newPosition = Cesium.Cartesian3.add(entityPos, positionOffset, new Cartesian3(0, 0, 0));
+  const heading = viewer.camera.heading;
+  const pitch = viewer.camera.pitch;
+  viewer.camera.flyTo({
+    destination: newPosition,
+    orientation : { heading, pitch, roll: 0.0 },
+    duration: 1.0
+  });
+
+  lastSelectedFlyToEntity = entity;
 };
 
-// viewer.camera.percentageChanged = 1;
-// viewer.camera.changed.addEventListener(() => {
-//   console.log('reset');
-//   lastSelectedEntity = undefined;
-// });
+// Reset the lastSelectedFlyToEntity if the camera moved too much
+viewer.camera.percentageChanged = 1;
+viewer.camera.changed.addEventListener(() => {
+  lastSelectedFlyToEntity = undefined;
+});
 
 // Moves the photo timeline to the entity
 const photoTimelineToEntity = entity => {
@@ -170,20 +178,20 @@ const timelineToEntity = entity => {
 }
 
 const previousEntity = () => {
-  if (viewer.selectedEntity.id.startsWith('photo_')) {
+  if (lastSelectedInfoboxEntity.id.startsWith('photo_')) {
     photoEntities.previous();
   }
-  if (viewer.selectedEntity.id.startsWith('line_')) {
+  if (lastSelectedInfoboxEntity.id.startsWith('line_')) {
     trackEntities.previous();
   }
 }
 document.querySelector('.btn-prev').onclick = previousEntity;
 
 const nextEntity = () => {
-  if (viewer.selectedEntity.id.startsWith('photo_')) {
+  if (lastSelectedInfoboxEntity.id.startsWith('photo_')) {
     photoEntities.next();
   }
-  if (viewer.selectedEntity.id.startsWith('line_')) {
+  if (lastSelectedInfoboxEntity.id.startsWith('line_')) {
     trackEntities.next();
   }
 }
@@ -315,20 +323,17 @@ fetch(configPath)
 
 
 // Click the globe to see the cartographic position
-const handler = new Cesium.ScreenSpaceEventHandler(viewer.scene.canvas);
-handler.setInputAction(event => {
-  var cartesian = viewer.camera.pickEllipsoid(
+const coordinatePicker = new Cesium.ScreenSpaceEventHandler(viewer.scene.canvas);
+coordinatePicker.setInputAction(event => {
+  const cartesian = viewer.camera.pickEllipsoid(
     event.position,
     viewer.scene.globe.ellipsoid
   );
   if (cartesian) {
-    var cartographic = Cesium.Cartographic.fromCartesian(cartesian);
-    var longitudeString = Cesium.Math.toDegrees(
-      cartographic.longitude
-    ).toFixed(4);
-    var latitudeString = Cesium.Math.toDegrees(
-      cartographic.latitude
-    ).toFixed(4);
-    console.log(longitudeString, latitudeString, cartographic.height);
+    const carto = Cesium.Cartographic.fromCartesian(cartesian);
+    const height = viewer.scene.globe.getHeight(carto);
+    console.log([Cesium.Math.toDegrees(carto.longitude).toFixed(4),
+      Cesium.Math.toDegrees(carto.latitude).toFixed(4),
+      height.toFixed(0)].join(','));
   }
 }, Cesium.ScreenSpaceEventType.LEFT_CLICK);
