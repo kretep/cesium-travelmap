@@ -14,10 +14,6 @@ Cesium.Ion.defaultAccessToken = process.env.CESIUM_TOKEN;
 const urlSearchParams = new URLSearchParams(window.location.search);
 const key = urlSearchParams.get('key');
 
-// Some variables
-let photoEntities = [];
-let currentPhotoEntity = undefined;
-
 // Set up viewer
 const viewer = new Cesium.Viewer('cesiumContainer', {
   terrainProvider: Cesium.createWorldTerrain(),
@@ -26,15 +22,97 @@ const viewer = new Cesium.Viewer('cesiumContainer', {
   infoBox: false        // we'll use a custom infobox
 });
 
-// Put the custom infobox inside the cesium viewer element for it to be rendered properly
-const template = document.querySelector('#infoBox').content.cloneNode(true);
-viewer._element.appendChild(template);
+// Instantiate the custom infobox from the template and
+// put it inside the cesium viewer element for it to be rendered properly
+const infobox = document.querySelector('#infoBox').content.cloneNode(true);
+viewer._element.appendChild(infobox);
+
+// Some variables
+let photoEntities;
+let trackEntities;
+
+// "Class" that keeps track of a list of entities and the selected entity,
+// has previous/next functions that also update the viewer.selectedEntity
+const entityList = (entities) => {
+  const list = entities;
+  let index = -1;
+  return {
+    list,
+    current: () => {
+      return list[index];
+    },
+    select: (entity) => {
+      index = list.indexOf(entity)
+    },
+    previous: () => {
+      if (index === -1) return;
+      index = index > 0 ? index - 1 : list.length - 1;
+      viewer.selectedEntity = list[index];
+    },
+    next: () => {
+      if (index === -1) return;
+      index = (index + 1) % list.length;
+      viewer.selectedEntity = list[index];
+    }
+  };
+};
 
 // Updates the infobox with the selected photo
 const updateInfobox = entity => {
+  document.querySelector('#track-metadata').style.display = 'none'; // hide metadata
   document.querySelector('#selectedPhoto').src = entity.properties.src;
   document.querySelector('#selectedPhotoCaption').innerHTML = entity.name;
-  document.querySelector(".cesium-infoBox").style.display = '';
+  document.querySelector("#selectedPhoto").style.display = ''; // show photo
+  document.querySelector(".cesium-infoBox").style.display = ''; // show the box
+}
+
+const updateInfoboxTrackEntity = entity => {
+  document.querySelector("#selectedPhoto").style.display = 'none'; // hide photo
+  document.querySelector('#selectedPhotoCaption').innerHTML = entity.id;
+  const table = document.querySelector("#track-metadata")
+  table.style.display = '';
+  
+  console.log(entity)
+  const props = {
+    start_time: {
+      label: "Start time",
+      format: d => (new Date(d)).toLocaleString()
+    },
+    end_time: {
+      label: "End time",
+      format: d => (new Date(d)).toLocaleString()
+    },
+    duration: {
+      label: "Duration",
+      format: d => `${Math.floor(d / 3600)}h ${Math.floor((d % 3600) / 60)}m ${Math.floor(d % 60)}s`
+    },
+    length_2d: {
+      label: "Distance",
+      format: d => `${(d / 1000).toFixed(1)} km`
+    },
+    ascent: {
+      label: "Ascent",
+      format: d => `${d.toFixed(0)} meters`
+    },
+    descent: {
+      label: "Descent",
+      format: d => `${d.toFixed(0)} meters`
+    },
+    min_elevation: {
+      label: "Min elevation",
+      format: d => `${d.toFixed(0)} meters`
+    },
+    max_elevation: {
+      label: "Max elevation",
+      format: d => `${d.toFixed(0)} meters`
+    },
+  }
+  
+  // String interpolation FTW
+  table.innerHTML = `${Object.keys(props).map(id => 
+    `<tr><td>${props[id].label}</td><td>${props[id].format(entity.properties[id]._value)}</td></tr>`).join('')}`;
+  
+    document.querySelector(".cesium-infoBox").style.display = ''; // show the box
 }
 
 // Moves the camera to the entity
@@ -63,32 +141,33 @@ const timelineToEntity = entity => {
   viewer.clock.currentTime = julianDate;
 }
 
-const previousPhoto = () => {
-  const index = photoEntities.indexOf(currentPhotoEntity);
-  if (index === -1) return;
-  const newIndex = index > 0 ? index - 1 : photoEntities.length - 1;
-  currentPhotoEntity = photoEntities[newIndex];
-  viewer.selectedEntity = currentPhotoEntity;
+const previousEntity = () => {
+  if (viewer.selectedEntity.id.startsWith('photo_')) {
+    photoEntities.previous();
+  }
+  if (viewer.selectedEntity.id.startsWith('line_')) {
+    trackEntities.previous();
+  }
 }
-document.querySelector('.btn-prev').onclick = previousPhoto;
+document.querySelector('.btn-prev').onclick = previousEntity;
 
-const nextPhoto = () => {
-  const index = photoEntities.indexOf(currentPhotoEntity);
-  if (index === -1) return;
-  const newIndex = (index + 1) % photoEntities.length;
-  currentPhotoEntity = photoEntities[newIndex];
-  viewer.selectedEntity = currentPhotoEntity;
+const nextEntity = () => {
+  if (viewer.selectedEntity.id.startsWith('photo_')) {
+    photoEntities.next();
+  }
+  if (viewer.selectedEntity.id.startsWith('line_')) {
+    trackEntities.next();
+  }
 }
-document.querySelector('.btn-next').onclick = nextPhoto;
+document.querySelector('.btn-next').onclick = nextEntity;
 
 // Arrow key handler
 document.querySelector('body').addEventListener('keydown', event => {
-  if (event.key === "ArrowLeft") previousPhoto();
-  if (event.key === "ArrowRight") nextPhoto();
+  if (event.key === "ArrowLeft") previousEntity();
+  if (event.key === "ArrowRight") nextEntity();
 });
 
 const closeInfoBox = () => {
-  currentPhotoEntity = undefined;
   document.querySelector(".cesium-infoBox").style.display = 'none';
 }
 document.querySelector('.cesium-infoBox-close').onclick = closeInfoBox;
@@ -101,20 +180,24 @@ const selectTimelinePhoto = entity => {
 
 // Handler for map selection of an entity.
 // Don't call directly, but set viewer.selectedEntity to trigger it.
-const selectPhotoEntity = entity => {
-  if (Cesium.defined(entity) && entity.id.startsWith('photo_')) {
-    currentPhotoEntity = entity;
+const onSelectEntity = entity => {
+  if (Cesium.defined(entity) && entity.id.startsWith('line_')) {
+    trackEntities.select(entity);
+    updateInfoboxTrackEntity(entity);
+  }
+  else if (Cesium.defined(entity) && entity.id.startsWith('photo_')) {
+    photoEntities.select(entity);
     photoTimelineToEntity(entity);
     timelineToEntity(entity);
     flyToEntity(entity);
     updateInfobox(entity);
   }
   else {
-    // Effectively prevents non-photo entities from being selected
+    // Effectively prevents other entities from being selected
     viewer.selectedEntity = undefined;
   }
 }
-viewer.selectedEntityChanged.addEventListener(selectPhotoEntity);
+viewer.selectedEntityChanged.addEventListener(onSelectEntity);
 
 // Scrolling for photo timeline
 const element = document.querySelector('#photoTimeline');
@@ -133,10 +216,11 @@ fetch(czml_path)
   .then(() => {
     // Get a sorted list of all photo entities
     const allEntities = viewer.dataSources._dataSources[0].entities.values;
-    photoEntities = allEntities.filter(entity => entity.id.startsWith('photo'));
-    photoEntities.sort((a, b) => { 
+    const filteredEntities = allEntities.filter(entity => entity.id.startsWith('photo'));
+    filteredEntities.sort((a, b) => { 
       return a.properties.time._value.localeCompare(b.properties.time._value);
     });
+    photoEntities = entityList(filteredEntities);
 
     // The div we'll put the photos in
     const target = document.querySelector('#photoTimeline');
@@ -156,7 +240,7 @@ fetch(czml_path)
     });
 
     // For each photo add a placeholder to the timeline
-    for (let entity of photoEntities) {
+    for (let entity of photoEntities.list) {
       const img = document.createElement('img');
       img.src = placeholderImage;
       img.onclick = event => selectTimelinePhoto(event.target.entity);
@@ -177,6 +261,9 @@ fetch(czml_path)
 
     // This combines well with entity.point.disableDepthTestDistance of the photo markers
     viewer.scene.globe.depthTestAgainstTerrain = true;
+
+    const entities = allEntities.filter(entity => entity.id.startsWith('line_'));
+    trackEntities = entityList(entities);
   });
 
 // Load config

@@ -63,7 +63,7 @@ def create_coordinate_list(df_input, includeTimestep=True):
 def format_datetime(datetime):
     return str(datetime).replace(" ", "T").replace(".000", "Z")
 
-def create_polyline(path_id, df_input, color):
+def create_polyline(path_id, df_input, metadata, color):
     coordinate_list = create_coordinate_list(df_input, includeTimestep=False)
     return {
         "id": path_id,
@@ -84,7 +84,8 @@ def create_polyline(path_id, df_input, color):
             },
             "width": 6,
             "clampToGround": True,
-        }
+        },
+        "properties": metadata
     }
 
 def create_point(point_id, df_input, color):
@@ -140,6 +141,7 @@ def get_color(index):
         [190, 255, 255, opacity],
     ][index]
 
+# Returns a tuple of dataframe and metadata dictionary
 def load_track(path):
     gpx_file = open(path, 'r')
     gpx = gpxpy.parse(gpx_file)
@@ -149,19 +151,36 @@ def load_track(path):
         gpx.smooth(vertical=True, horizontal=True, remove_extremes=True)
     gpx.simplify(max_distance=1)
 
-    return gpx_to_dataframe(gpx)
+    # Extract meta data
+    minmax = gpx.get_elevation_extremes()
+    time_bounds = gpx.get_time_bounds()
+    updown_elevation = gpx.get_uphill_downhill()
+    metadata = {
+        "start_time": time_bounds.start_time.isoformat(),
+        "end_time": time_bounds.end_time.isoformat(),
+        "duration": gpx.get_duration(),
+        "length_2d": gpx.length_2d(),
+        "ascent": updown_elevation.uphill,
+        "descent": updown_elevation.downhill,
+        "min_elevation": minmax.minimum,
+        "max_elevation": minmax.maximum
+    }
+
+    return gpx_to_dataframe(gpx), metadata
 
 def load_tracks(tracks_dir):
     listdir = os.listdir(tracks_dir)
     listdir.sort()
     paths = [os.path.join(tracks_dir, file) for file in listdir if file[-4:] == '.gpx']
-    gpx_dfs = [load_track(path) for path in paths]
-    return gpx_dfs
+    track_tuple = [load_track(path) for path in paths]
+    return track_tuple
 
-def process_track(df, czml, index):
+def process_track(data, czml, index):
+    df = data[0]
+    metadata = data[1]
 
     # Polyline
-    path_object = create_polyline(f'line_{index}', df, get_color(index))
+    path_object = create_polyline(f'line_{index}', df, metadata, get_color(index))
     czml.append(path_object)
 
     # Point
@@ -289,11 +308,12 @@ if __name__ == "__main__":
     
     # Process tracks
     print(f"Loading and combining tracks")
-    tracks = load_tracks(os.path.join(data_dir, 'tracks'))
-    for index, track in enumerate(tracks):
-        process_track(track, czml, index)
+    track_tuples = load_tracks(os.path.join(data_dir, 'tracks'))
+    for index, track_tuple in enumerate(track_tuples):
+        process_track(track_tuple, czml, index)
     
     # Combined tracks
+    tracks = map(lambda el: el[0], track_tuples)
     combined_tracks = pd.concat(tracks)
     combined_tracks.sort_values('starttime', inplace=True)
     combined_tracks.reset_index(drop=True, inplace=True)

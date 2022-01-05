@@ -60,6 +60,7 @@ html, body {
 div.cesium-infoBox-description {
   width: 100%;
   text-align: center;
+  color: white;
 }
 
 div.cesium-infoBox-description img {
@@ -68,6 +69,14 @@ div.cesium-infoBox-description img {
   margin: 2px;
   align-self: center;
   border-radius: 7px;
+}
+
+div.cesium-infoBox-description table {
+  width: 100%;
+  height: auto;
+  margin: 2px;
+  align-self: center;
+  color: white;
 }
 
 .btn-prev {
