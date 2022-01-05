@@ -6,6 +6,7 @@ import "cesium/Build/Cesium/Widgets/widgets.css";
 import "./style.css";
 //import viewerCesiumNavigationMixin from 'cesium-navigation';
 import placeholderImage from './placeholder.png';
+import Cartesian3 from 'cesium/Source/Core/Cartesian3';
 
 // Your access token can be found at: https://cesium.com/ion/tokens.
 Cesium.Ion.defaultAccessToken = process.env.CESIUM_TOKEN;
@@ -28,8 +29,9 @@ const infobox = document.querySelector('#infoBox').content.cloneNode(true);
 viewer._element.appendChild(infobox);
 
 // Some variables
-let photoEntities;
-let trackEntities;
+let photoEntities; // entityList
+let trackEntities; // entityList
+let lastSelectedEntity; // tracked to determine camera position when flying to a new entity
 
 // "Class" that keeps track of a list of entities and the selected entity,
 // has previous/next functions that also update the viewer.selectedEntity
@@ -38,9 +40,7 @@ const entityList = (entities) => {
   let index = -1;
   return {
     list,
-    current: () => {
-      return list[index];
-    },
+    current: () => list[index],
     select: (entity) => {
       index = list.indexOf(entity)
     },
@@ -72,7 +72,6 @@ const updateInfoboxTrackEntity = entity => {
   const table = document.querySelector("#track-metadata")
   table.style.display = '';
   
-  console.log(entity)
   const props = {
     start_time: {
       label: "Start time",
@@ -117,17 +116,46 @@ const updateInfoboxTrackEntity = entity => {
 
 // Moves the camera to the entity
 const flyToEntity = entity => {
+  if (entity.position === undefined) return;
+
   const position = Cesium.Cartographic.fromCartesian(entity.position._value);
   const height = viewer.camera.positionCartographic.height;
-  position.height = height;
-  viewer.camera.flyTo({
-    destination: Cesium.Cartesian3.fromRadians(
-      position.longitude,
-      position.latitude,
-      height),
-    duration: 1.0
-  });
+  
+  if (lastSelectedEntity === undefined) {
+    // Move to entity position, but keep camera height
+    viewer.camera.flyTo({
+      destination: Cesium.Cartesian3.fromRadians(
+        position.longitude,
+        position.latitude,
+        height
+      ),
+      duration: 1.0
+    });
+  }
+  else {
+    // Move toward new entity, but keep same orientation
+    const positionOffset = Cesium.Cartesian3.subtract(viewer.camera.positionWC, lastSelectedEntity.position._value, new Cartesian3(0, 0, 0));
+    const newPosition = Cesium.Cartesian3.add(entity.position._value, positionOffset, new Cartesian3(0, 0, 0));
+    const heading = viewer.camera.heading;
+    const pitch = viewer.camera.pitch;
+    viewer.camera.flyTo({
+      destination: newPosition,
+      orientation : {
+          heading, // : Cesium.Math.toRadians(175.0),
+          pitch, // : Cesium.Math.toRadians(-35.0),
+          roll : 0.0
+      },
+      duration: 1.0
+    });
+  }
+  lastSelectedEntity = entity;
 };
+
+// viewer.camera.percentageChanged = 1;
+// viewer.camera.changed.addEventListener(() => {
+//   console.log('reset');
+//   lastSelectedEntity = undefined;
+// });
 
 // Moves the photo timeline to the entity
 const photoTimelineToEntity = entity => {
@@ -135,7 +163,7 @@ const photoTimelineToEntity = entity => {
   img.scrollIntoView({inline: "center"});
 }
 
-// Moves the timeline slider to the entity
+// Moves the timeline slider/cursor to the time of the entity
 const timelineToEntity = entity => {
   const julianDate = Cesium.JulianDate.fromIso8601(entity.properties.time._value);
   viewer.clock.currentTime = julianDate;
@@ -175,7 +203,7 @@ document.querySelector('.cesium-infoBox-close').onclick = closeInfoBox;
 
 // Handler for selecting a timeline photo (img)
 const selectTimelinePhoto = entity => {
-  viewer.selectedEntity = entity; // this will trigger selectPhotoEntity
+  viewer.selectedEntity = entity; // this will trigger onSelectEntity
 };
 
 // Handler for map selection of an entity.
@@ -262,8 +290,13 @@ fetch(czml_path)
     // This combines well with entity.point.disableDepthTestDistance of the photo markers
     viewer.scene.globe.depthTestAgainstTerrain = true;
 
+    // GPS tracks
     const entities = allEntities.filter(entity => entity.id.startsWith('line_'));
     trackEntities = entityList(entities);
+
+    // Tracking point
+    const point = allEntities.find(entity => entity.id === 'point_0');
+    //viewer.trackedEntity = point;
   });
 
 // Load config
