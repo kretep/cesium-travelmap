@@ -201,7 +201,7 @@ def create_photo_marker(id, row, track, config, dir_name):
         "id": id,
         "name": title,
         "position": {
-            "cartographicDegrees": [coordinates[0], coordinates[1], 0] # reset height to prevent floating markers
+            "cartographicDegrees": [coordinates[0], coordinates[1], 2] # reset height to prevent floating markers
         },
         "point": {
             "color": {
