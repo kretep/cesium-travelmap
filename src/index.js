@@ -165,6 +165,15 @@ viewer.camera.changed.addEventListener(() => {
   lastSelectedFlyToEntity = undefined;
 });
 
+viewer.camera.moveEnd.addEventListener(() => {
+  const pitchDegrees = viewer.camera.pitch / Cesium.Math.PI * 180;
+  // Turn on depth testing only when pitch is shallow.
+  // In other words: we don't need (or want) it when looking straight down.
+  // Straight down is -PI/2 or -90 degrees.
+  // Actually not sure if this works as expected....
+  viewer.scene.globe.depthTestAgainstTerrain = pitchDegrees > -45;
+});
+
 // Moves the photo timeline to the entity
 const photoTimelineToEntity = entity => {
   const img = document.getElementById(entity.id);
@@ -178,6 +187,7 @@ const timelineToEntity = entity => {
 }
 
 const previousEntity = () => {
+  if (lastSelectedInfoboxEntity === undefined) return;
   if (lastSelectedInfoboxEntity.id.startsWith('photo_')) {
     photoEntities.previous();
   }
@@ -188,6 +198,7 @@ const previousEntity = () => {
 document.querySelector('.btn-prev').onclick = previousEntity;
 
 const nextEntity = () => {
+  if (lastSelectedInfoboxEntity === undefined) return;
   if (lastSelectedInfoboxEntity.id.startsWith('photo_')) {
     photoEntities.next();
   }
@@ -295,8 +306,9 @@ fetch(czml_path)
       entity.point.disableDepthTestDistance = new Cesium.ConstantProperty(100000);
     }
 
-    // This combines well with entity.point.disableDepthTestDistance of the photo markers
-    viewer.scene.globe.depthTestAgainstTerrain = true;
+    // By default, don't depth test (looking straight down),
+    // because marker edges might be clipped. Also see camera.moveEnd handler.
+    viewer.scene.globe.depthTestAgainstTerrain = false;
 
     // GPS tracks
     const entities = allEntities.filter(entity => entity.id.startsWith('line_'));
