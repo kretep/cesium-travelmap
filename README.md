@@ -4,15 +4,17 @@ Display photo locations and GPS tracks on an interactive map and timeline.
 
 If GPS information is not available in a photo, the time and GPS track will be used to position the photo on the map.
 
+![Travelmap screenshot](assets/images/screenshot.jpg)
+
 In short:
-1. Exiftool is used to extract photo GPS data and date & time to a CSV file.
+1. ExifTool is used to extract photo GPS data and date & time to a CSV file.
 2. A Python script combines one or more CSV files and GPX tracks and generates a CZML file that contains the paths and markers to display.
 3. CZML is read by the Cesium-based web application and displays the tracks and photo locations on the map.
 
 ## Prerequisites
 
 For preprocessing the data:
-* Exiftool
+* [ExifTool](https://exiftool.org/)
 * Python 3
 
 For building / developing the application:
@@ -69,7 +71,7 @@ This will perform a number of tasks:
 
 ## Run the visualizer
 
-Make sure .env contains the correct CESIUM_TOKEN and DATA_DIR values.
+Make sure .env contains the correct CESIUM_TOKEN and your data directory is relative to the index.html, at data/
 
 ```
 npm start
