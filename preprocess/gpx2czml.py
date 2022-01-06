@@ -46,6 +46,11 @@ def gpx_to_dataframe(gpx):
     output['stoptime'] = output['starttime'].shift(-1).fillna(method='ffill')
     output['duration'] = (output['stoptime'] - output['starttime']) / np.timedelta64(1, 's') ## duration to seconds
     output['timestamp'] = timestamps
+
+    # output['longitude'] = output['longitude'].rolling(100, 1, True).mean()
+    # output['latitude'] = output['latitude'].rolling(100, 1, True).mean()
+    # output['elevation'] = output['elevation'].rolling(100, 1, True).mean()
+
     return output
 
 def create_coordinate_list(df_input, includeTimestep=True):
@@ -110,7 +115,14 @@ def create_point(point_id, df_input, color):
             "outlineWidth": 6,
             "pixelSize": 8,
             "heightReference": "CLAMP_TO_GROUND"
-        }   
+        },
+         "viewFrom": {
+            "cartesian": [
+            -2080,
+            -1715,
+            779
+            ]
+        },
     }
 
 def create_document_packet(name, starttime, stoptime):
@@ -146,11 +158,13 @@ def load_track(path):
     print("Loading and processing track", path)
     gpx_file = open(path, 'r')
     gpx = gpxpy.parse(gpx_file)
+    gpx_point_count = gpx.get_points_no()
 
     # Smoothen and resample track
     for i in range(10):
         gpx.smooth(vertical=True, horizontal=True, remove_extremes=True)
     gpx.simplify(max_distance=1)
+    print(f"Reduced point count from {gpx_point_count} to {gpx.get_points_no()}")
 
     # Extract meta data
     minmax = gpx.get_elevation_extremes()
@@ -269,8 +283,8 @@ def process_photos(dir_name, czml, combined_tracks):
     config_path = os.path.join(photo_dir, 'config.cfg')
     if not os.path.exists(config_path): return
     config.read(config_path)
-    delta_hours = int(config.get('global', 'delta.hours', fallback=0))
-    delta_minutes = int(config.get('global', 'delta.minutes', fallback=0))
+    delta_hours = float(config.get('global', 'delta.hours', fallback=0))
+    delta_minutes = float(config.get('global', 'delta.minutes', fallback=0))
 
     # Execute exiftool if photos.csv does not exist yet
     csv_path = os.path.join(photo_dir, 'photos.csv')
