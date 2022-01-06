@@ -143,6 +143,7 @@ def get_color(index):
 
 # Returns a tuple of dataframe and metadata dictionary
 def load_track(path):
+    print("Loading and processing track", path)
     gpx_file = open(path, 'r')
     gpx = gpxpy.parse(gpx_file)
 
@@ -284,11 +285,17 @@ def process_photos(dir_name, czml, combined_tracks):
     print(f"Processing photos: ${photo_dir}")
     df = pd.read_csv(csv_path)
     df = df.rename(str.lower, axis='columns')
-    #df['CreateDate'] = df['CreateDate'].apply(lambda s: datetime.strptime(s, DATETIME_FORMAT) + timedelta(hours=delta_hours, minutes=delta_minutes))
+
+    # Check if date/time are available
+    count = df.shape[0]
+    df = df[df[HEADER_DATE_TIME] != '-'] # Discard when date/time is unavailable
+    discard_count = count - df.shape[0]
+    if discard_count > 0: print(f"Discarded {discard_count} photos with date/time missing")
+
+    # Apply date/time correction & sort
     df[HEADER_DATE_TIME] = df[HEADER_DATE_TIME].apply(lambda s: datetime.strptime(s, DATETIME_FORMAT) + timedelta(hours=delta_hours, minutes=delta_minutes))
     df.sort_values(HEADER_DATE_TIME, inplace=True)
     df.reset_index(drop=True, inplace=True)
-    df.to_csv(csv_path + '_sorted.csv')
 
     # Create markers for photos
     for index, row in df.iterrows():
