@@ -287,6 +287,7 @@ def get_photo_coordinates(photo_row, track, config):
         return list(map(float, coords.split(','))), 2
 
     # 3) No GPS data found; use photo time and GPS track to determine position
+    if track is None: return None, None
     tt = photo_row[HEADER_DATE_TIME].timestamp()
     i0, i1 = get_closests(track, 'timestamp', tt)
     track_row0 = track.iloc[i0]
@@ -354,6 +355,8 @@ def process_photos(dir_name, czml, combined_tracks):
         marker = create_photo_marker(f'photo_{dir_name}_{index}', row, combined_tracks, config, dir_name)
         if marker is not None:
             czml.append(marker)
+    
+    return df
 
 def get_datadir(relative=False):
     base_dir = 'data' if relative else os.environ['DATA_DIR']
@@ -372,28 +375,33 @@ if __name__ == "__main__":
         process_track(track_tuple, czml, index)
     
     # Combined tracks
-    tracks = map(lambda el: el[0], track_tuples)
-    combined_tracks = pd.concat(tracks)
-    combined_tracks.sort_values('time', inplace=True)
-    combined_tracks.reset_index(drop=True, inplace=True)
-    combined_tracks.to_csv(os.path.join(get_datadir(), 'tracks_combined.csv'))
+    tracks = list(map(lambda el: el[0], track_tuples))
+    combined_tracks = None
+    if len(tracks) > 0:
+        combined_tracks = pd.concat(tracks)
+        combined_tracks.sort_values('time', inplace=True)
+        combined_tracks.reset_index(drop=True, inplace=True)
+        combined_tracks.to_csv(os.path.join(get_datadir(), 'tracks_combined.csv'))
 
-    # Define document packet
-    starttime = min(combined_tracks['time'])
-    stoptime = max(combined_tracks['time'])
-    document_packet = create_document_packet("cesium-travelmap", starttime, stoptime)
-    czml.insert(0, document_packet) # put at start
+    # Tracking entity
+    if not combined_tracks is None:
+        tracking_entity = create_tracking_entity(f'track_entity', combined_tracks)
+        czml.append(tracking_entity)
 
     # Process photos
+    photo_dfs = []
     photo_dir = os.path.join(data_dir, 'photos')
     photo_dirs = [name for name in os.listdir(photo_dir) if os.path.isdir(os.path.join(photo_dir, name))]
     photo_dirs.sort()
     for dir_name in photo_dirs:
-        process_photos(dir_name, czml, combined_tracks)
+        photo_dfs.append(process_photos(dir_name, czml, combined_tracks))
+    all_photos = pd.concat(photo_dfs)
 
-    # Tracking entity
-    tracking_entity = create_tracking_entity(f'track_entity', combined_tracks)
-    czml.append(tracking_entity)
+    # Define document packet (now that we know the global start/stop times)
+    starttime = min(all_photos[HEADER_DATE_TIME]) if combined_tracks is None else min(combined_tracks['time'])
+    stoptime = max(all_photos[HEADER_DATE_TIME]) if combined_tracks is None else max(combined_tracks['time'])
+    document_packet = create_document_packet("cesium-travelmap", starttime, stoptime)
+    czml.insert(0, document_packet) # put at start
 
     # Write output
     path = os.path.join(data_dir, 'combined.czml')
