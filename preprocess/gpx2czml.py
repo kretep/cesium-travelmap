@@ -58,9 +58,6 @@ def create_coordinate_list(df_input, includeTimestep=True):
         results.append(df_input.elevation.iloc[i])
     return results
 
-def format_datetime(datetime):
-    return str(datetime).replace(" ", "T").replace(".000", "Z")
-
 # Each track will represented by a polyline
 def create_polyline(path_id, df_input, metadata, color):
     coordinate_list = create_coordinate_list(df_input, includeTimestep=False)
@@ -92,8 +89,8 @@ def create_polyline(path_id, df_input, metadata, color):
 # so it will be at the exact location of the track.
 # Each track will have its own cursor. (see create_tracking_entity)
 def create_tracking_cursor(point_id, df_input):
-    point_starttime = format_datetime(min(df_input['time']))
-    point_stoptime = format_datetime(max(df_input['time']))
+    point_starttime = min(df_input['time']).isoformat()
+    point_stoptime = max(df_input['time']).isoformat()
     point_availability = point_starttime + "/" + point_stoptime
     coordinate_list = create_coordinate_list(df_input, includeTimestep=True)
     return {
@@ -132,8 +129,8 @@ def create_tracking_entity(point_id, df_input):
     df_input['latitude'] = df_input['latitude'].rolling(100, 1, True).mean()
     df_input['elevation'] = df_input['elevation'].rolling(100, 1, True).mean()
 
-    point_starttime = format_datetime(min(df_input['time']))
-    point_stoptime = format_datetime(max(df_input['time']))
+    point_starttime = min(df_input['time']).isoformat()
+    point_stoptime = max(df_input['time']).isoformat()
     point_availability = point_starttime + "/" + point_stoptime
     coordinate_list = create_coordinate_list(df_input, includeTimestep=True)
     return {
@@ -164,8 +161,8 @@ def create_tracking_entity(point_id, df_input):
     }
 
 def create_document_packet(name, starttime, stoptime):
-    starttime = format_datetime(starttime)
-    stoptime = format_datetime(stoptime)
+    starttime = starttime.isoformat()
+    stoptime = stoptime.isoformat()
     availability = starttime + "/" + stoptime
     return {
         "id": "document",
@@ -383,11 +380,6 @@ if __name__ == "__main__":
         combined_tracks.reset_index(drop=True, inplace=True)
         combined_tracks.to_csv(os.path.join(get_datadir(), 'tracks_combined.csv'))
 
-    # Tracking entity
-    if not combined_tracks is None:
-        tracking_entity = create_tracking_entity(f'track_entity', combined_tracks)
-        czml.append(tracking_entity)
-
     # Process photos
     photo_dfs = []
     photo_dir = os.path.join(data_dir, 'photos')
@@ -396,6 +388,12 @@ if __name__ == "__main__":
     for dir_name in photo_dirs:
         photo_dfs.append(process_photos(dir_name, czml, combined_tracks))
     all_photos = pd.concat(photo_dfs)
+
+    # Tracking entity
+    # ! Do this after processing the photos, since we'll smoothen the tracks in-place
+    if not combined_tracks is None:
+        tracking_entity = create_tracking_entity(f'track_entity', combined_tracks)
+        czml.append(tracking_entity)
 
     # Define document packet (now that we know the global start/stop times)
     starttime = min(all_photos[HEADER_DATE_TIME]) if combined_tracks is None else min(combined_tracks['time'])

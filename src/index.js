@@ -305,6 +305,9 @@ fetch(czml_path)
       // Observe for img visibility
       observer.observe(img);
 
+      // For easy clock comparisons
+      entity.properties.julianDate = JulianDate.fromIso8601(entity.properties.time._value);
+
       // Set the disableDepthTestDistance to a high number, but not INFINITY. The effect is that markers are not clipped
       // at their edges, but are hidden behind terrain (mountains). Setting to INFINITY would do no depth testing at all
       // (similar to viewer.scene.globe.depthTestAgainstTerrain = false)
@@ -384,15 +387,18 @@ function throttle (callback, limit) {
   }
 }
 
+const photoTimelineToTimeline = () => {
+  for (let photo of photoEntities.list) {
+    if (photo.properties.julianDate >= viewer.clock.currentTime) {
+      photoTimelineToEntity(photo, true);
+      return;
+    }
+  }
+}
+viewer.timeline.addEventListener('settime', throttle(photoTimelineToTimeline, 200), false);
 const updateToClock = () => {
   if (viewer.clock.shouldAnimate) {
-    const clockTime = JulianDate.toIso8601(viewer.clock.currentTime).slice(0, 19);
-    for (let photo of photoEntities.list) {
-      if (photo.properties.time._value.slice(0, 19) > clockTime) {
-        photoTimelineToEntity(photo, true);
-        return;
-      }
-    }
+    photoTimelineToTimeline();
   }
 }
 viewer.clock.onTick.addEventListener(throttle(updateToClock, 200));
