@@ -8,6 +8,7 @@ import "./style.css";
 import placeholderImage from './placeholder.png';
 import Cartesian3 from 'cesium/Source/Core/Cartesian3';
 import Cartographic from 'cesium/Source/Core/Cartographic';
+import JulianDate from 'cesium/Source/Core/JulianDate';
 
 // Your access token can be found at: https://cesium.com/ion/tokens.
 Cesium.Ion.defaultAccessToken = process.env.CESIUM_TOKEN;
@@ -34,6 +35,7 @@ let photoEntities; // entityList
 let trackEntities; // entityList
 let lastSelectedFlyToEntity; // tracked to determine camera position when flying to a new entity
 let lastSelectedInfoboxEntity;
+let trackedEntity; //entity to track
 
 // "Class" that keeps track of a list of entities and the selected entity,
 // has previous/next functions that also update the viewer.selectedEntity
@@ -72,18 +74,18 @@ const updateInfobox = entity => {
 const updateInfoboxTrackEntity = entity => {
   lastSelectedInfoboxEntity = entity;
   document.querySelector("#selectedPhoto").style.display = 'none'; // hide photo
-  document.querySelector('#selectedPhotoCaption').innerHTML = entity.id;
+  document.querySelector('#selectedPhotoCaption').innerHTML = (new Date(entity.name)).toLocaleDateString("nl-NL");
   const table = document.querySelector("#track-metadata")
   table.style.display = '';
   
   const props = {
     start_time: {
       label: "Start time",
-      format: d => (new Date(d)).toLocaleString()
+      format: d => (new Date(d)).toLocaleString("nl-NL")
     },
     end_time: {
       label: "End time",
-      format: d => (new Date(d)).toLocaleString()
+      format: d => (new Date(d)).toLocaleString("nl-NL")
     },
     duration: {
       label: "Duration",
@@ -175,9 +177,12 @@ viewer.camera.moveEnd.addEventListener(() => {
 });
 
 // Moves the photo timeline to the entity
-const photoTimelineToEntity = entity => {
+const photoTimelineToEntity = (entity, smooth=false) => {
   const img = document.getElementById(entity.id);
-  img.scrollIntoView({inline: "center"});
+  img.scrollIntoView({
+    inline: "center",
+    behavior: smooth ? "smooth": "auto"
+  });
 }
 
 // Moves the timeline slider/cursor to the time of the entity
@@ -309,14 +314,14 @@ fetch(czml_path)
     // By default, don't depth test (looking straight down),
     // because marker edges might be clipped. Also see camera.moveEnd handler.
     viewer.scene.globe.depthTestAgainstTerrain = false;
+    viewer.scene.screenSpaceCameraController.enableCollisionDetection = true
 
     // GPS tracks
     const entities = allEntities.filter(entity => entity.id.startsWith('line_'));
     trackEntities = entityList(entities);
 
     // Tracking point
-    const point = allEntities.find(entity => entity.id === 'point_0');
-    //viewer.trackedEntity = point;
+    trackedEntity = allEntities.find(entity => entity.id === 'track_entity');
   });
 
 // Load config
@@ -334,7 +339,7 @@ fetch(configPath)
   });
 
 
-// Click the globe to see the cartographic position
+// Log the cartographic position on clicking the globe. Mainly for manual positioning of photos and debugging
 const coordinatePicker = new Cesium.ScreenSpaceEventHandler(viewer.scene.canvas);
 coordinatePicker.setInputAction(event => {
   const cartesian = viewer.camera.pickEllipsoid(
@@ -344,8 +349,55 @@ coordinatePicker.setInputAction(event => {
   if (cartesian) {
     const carto = Cesium.Cartographic.fromCartesian(cartesian);
     const height = viewer.scene.globe.getHeight(carto);
-    console.log([Cesium.Math.toDegrees(carto.longitude).toFixed(4),
-      Cesium.Math.toDegrees(carto.latitude).toFixed(4),
-      height.toFixed(0)].join(','));
+    let s = lastSelectedInfoboxEntity !== undefined ? lastSelectedInfoboxEntity.properties.src + "=" : '';
+    s += [Cesium.Math.toDegrees(carto.longitude).toFixed(6),
+          Cesium.Math.toDegrees(carto.latitude).toFixed(6),
+          height.toFixed(0)].join(',');
+    console.log(s);
   }
 }, Cesium.ScreenSpaceEventType.LEFT_CLICK);
+
+Cesium.knockout.getObservable(viewer.clockViewModel, 'shouldAnimate').subscribe(isAnimating => {
+  if (isAnimating) {
+    viewer.scene.globe.depthTestAgainstTerrain = true;
+    viewer.trackedEntity = trackedEntity;
+    console.log(viewer.trackedEntity);
+    viewer.trackedEntity._viewFrom._value = new Cartesian3(-2000, -1700, 800);
+    console.log('Cesium clock is animating.');
+  } else {
+    viewer.trackedEntity = undefined;
+    console.log('Cesium clock is paused.');
+  }
+});
+
+// From https://stackoverflow.com/a/27078401/1097971
+function throttle (callback, limit) {
+  var waiting = false;                      // Initially, we're not waiting
+  return function () {                      // We return a throttled function
+      if (!waiting) {                       // If we're not waiting
+          callback.apply(this, arguments);  // Execute users function
+          waiting = true;                   // Prevent future invocations
+          setTimeout(function () {          // After a period of time
+              waiting = false;              // And allow future invocations
+          }, limit);
+      }
+  }
+}
+
+const updateToClock = () => {
+  if (viewer.clock.shouldAnimate) {
+    const clockTime = JulianDate.toIso8601(viewer.clock.currentTime).slice(0, 19);
+    for (let photo of photoEntities.list) {
+      if (photo.properties.time._value.slice(0, 19) > clockTime) {
+        photoTimelineToEntity(photo, true);
+        return;
+      }
+    }
+  }
+}
+viewer.clock.onTick.addEventListener(throttle(updateToClock, 200));
+viewer.clock.onTick.addEventListener(() => {
+  if (viewer.clock.shouldAnimate) {
+    viewer.camera.rotateRight(0.003);
+  }
+});

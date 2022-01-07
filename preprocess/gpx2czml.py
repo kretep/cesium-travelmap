@@ -26,7 +26,7 @@ def gpx_to_dataframe(gpx):
     lats = []
     lons = []
     elevations = []
-    starttimes = []
+    times = []
     timestamps = []
 
     for track in gpx.tracks:
@@ -35,43 +35,38 @@ def gpx_to_dataframe(gpx):
                 lats.append(point.latitude)
                 lons.append(point.longitude)
                 elevations.append(point.elevation)
-                starttimes.append(point.time)
+                times.append(point.time)
                 timestamps.append(point.time.timestamp())
 
     output = pd.DataFrame()
     output['latitude'] = lats
     output['longitude'] = lons
     output['elevation'] = elevations
-    output['starttime'] = starttimes
-    output['stoptime'] = output['starttime'].shift(-1).fillna(method='ffill')
-    output['duration'] = (output['stoptime'] - output['starttime']) / np.timedelta64(1, 's') ## duration to seconds
+    output['time'] = times
     output['timestamp'] = timestamps
-
-    # output['longitude'] = output['longitude'].rolling(100, 1, True).mean()
-    # output['latitude'] = output['latitude'].rolling(100, 1, True).mean()
-    # output['elevation'] = output['elevation'].rolling(100, 1, True).mean()
-
     return output
 
 def create_coordinate_list(df_input, includeTimestep=True):
     results = []
-    timestep = 0
+    start_timestamp = min(df_input['timestamp'])
     for i in df_input.index:
-        if includeTimestep: results.append(timestep)
+        if includeTimestep:
+            timestamp = df_input.timestamp.iloc[i]
+            results.append(timestamp - start_timestamp)
         results.append(df_input.longitude.iloc[i])
         results.append(df_input.latitude.iloc[i])
         results.append(df_input.elevation.iloc[i])
-        duration = df_input.duration.iloc[(i)]
-        timestep += duration
     return results
 
 def format_datetime(datetime):
     return str(datetime).replace(" ", "T").replace(".000", "Z")
 
+# Each track will represented by a polyline
 def create_polyline(path_id, df_input, metadata, color):
     coordinate_list = create_coordinate_list(df_input, includeTimestep=False)
     return {
         "id": path_id,
+        "name": str(min(df_input['time'])),
         "polyline": {
             "positions": {
                 "cartographicDegrees": coordinate_list
@@ -93,9 +88,12 @@ def create_polyline(path_id, df_input, metadata, color):
         "properties": metadata
     }
 
-def create_point(point_id, df_input, color):
-    point_starttime = format_datetime(min(df_input['starttime']))
-    point_stoptime = format_datetime(max(df_input['stoptime']))
+# The cursor is the entity that will be shown on the polyline,
+# so it will be at the exact location of the track.
+# Each track will have its own cursor. (see create_tracking_entity)
+def create_tracking_cursor(point_id, df_input):
+    point_starttime = format_datetime(min(df_input['time']))
+    point_stoptime = format_datetime(max(df_input['time']))
     point_availability = point_starttime + "/" + point_stoptime
     coordinate_list = create_coordinate_list(df_input, includeTimestep=True)
     return {
@@ -110,11 +108,51 @@ def create_point(point_id, df_input, color):
                 "rgba": [255, 255, 255, 255]
             },
             "outlineColor": {
-                "rgba": color
+                "rgba": [255, 0, 0, 200]
             },
-            "outlineWidth": 6,
+            "outlineWidth": 4,
             "pixelSize": 8,
             "heightReference": "CLAMP_TO_GROUND"
+        },
+         "viewFrom": {
+            "cartesian": [
+            -2080,
+            -1715,
+            779
+            ]
+        },
+    }
+
+# The tracking entity is the entity that will be tracked in the animation,
+# it's based on a heavily smoothed version of the tracks, so the camera movement is smooth.
+# There will be one entity for the whole dataset, based on the combined tracks.
+# (also see create_tracking_cursor)
+def create_tracking_entity(point_id, df_input):
+    df_input['longitude'] = df_input['longitude'].rolling(100, 1, True).mean()
+    df_input['latitude'] = df_input['latitude'].rolling(100, 1, True).mean()
+    df_input['elevation'] = df_input['elevation'].rolling(100, 1, True).mean()
+
+    point_starttime = format_datetime(min(df_input['time']))
+    point_stoptime = format_datetime(max(df_input['time']))
+    point_availability = point_starttime + "/" + point_stoptime
+    coordinate_list = create_coordinate_list(df_input, includeTimestep=True)
+    return {
+        "id": point_id,
+        "availability": point_availability,
+        "position": {
+            "epoch": point_starttime,
+            "cartographicDegrees": coordinate_list
+        },
+        "point": {
+            "color": {
+                "rgba": [255, 255, 255, 255]
+            },
+            "outlineColor": {
+                "rgba": [255, 255, 0, 200]
+            },
+            "outlineWidth": 4,
+            "pixelSize": 8,
+            "heightReference": "NONE"
         },
          "viewFrom": {
             "cartesian": [
@@ -137,7 +175,7 @@ def create_document_packet(name, starttime, stoptime):
         "clock": {
             "interval": availability,
             "currentTime": starttime,
-            "multiplier": 1000
+            "multiplier": 300
         }
     }
 
@@ -151,7 +189,7 @@ def get_color(index):
         [255, 120, 190, opacity],
         [255, 190, 120, opacity],
         [190, 255, 255, opacity],
-    ][index]
+    ][index % 7]
 
 # Returns a tuple of dataframe and metadata dictionary
 def load_track(path):
@@ -199,8 +237,8 @@ def process_track(data, czml, index):
     czml.append(path_object)
 
     # Point
-    point_object = create_point(f'point_{index}', df, get_color(6))
-    czml.append(point_object)
+    cursor_object = create_tracking_cursor(f'point_{index}', df)
+    czml.append(cursor_object)
 
 LOCATION_SOURCES = ['exif', 'gpx', 'manual']
 
@@ -208,7 +246,7 @@ def create_photo_marker(id, row, track, config, dir_name):
     attribution = config.get('global', 'attribution')
     coordinates, location_source = get_photo_coordinates(row, track, config)
     if coordinates is None:
-        print("Discarding ", f'{dir_name}/{row[HEADER_FILENAME]}')
+        print(f'Discarding {dir_name}/{row[HEADER_FILENAME]}')
         return None
     title = f'{attribution}, {row[HEADER_DATE_TIME]} (location {LOCATION_SOURCES[location_source]})';
     base_path = get_datadir(True) # relative path starting at data/
@@ -336,15 +374,15 @@ if __name__ == "__main__":
     # Combined tracks
     tracks = map(lambda el: el[0], track_tuples)
     combined_tracks = pd.concat(tracks)
-    combined_tracks.sort_values('starttime', inplace=True)
+    combined_tracks.sort_values('time', inplace=True)
     combined_tracks.reset_index(drop=True, inplace=True)
     combined_tracks.to_csv(os.path.join(get_datadir(), 'tracks_combined.csv'))
 
     # Define document packet
-    starttime = min(combined_tracks['starttime'])
-    stoptime = max(combined_tracks['stoptime'])
-    document_packet = create_document_packet("testing", starttime, stoptime)
-    czml.insert(0, document_packet)
+    starttime = min(combined_tracks['time'])
+    stoptime = max(combined_tracks['time'])
+    document_packet = create_document_packet("cesium-travelmap", starttime, stoptime)
+    czml.insert(0, document_packet) # put at start
 
     # Process photos
     photo_dir = os.path.join(data_dir, 'photos')
@@ -352,6 +390,10 @@ if __name__ == "__main__":
     photo_dirs.sort()
     for dir_name in photo_dirs:
         process_photos(dir_name, czml, combined_tracks)
+
+    # Tracking entity
+    tracking_entity = create_tracking_entity(f'track_entity', combined_tracks)
+    czml.append(tracking_entity)
 
     # Write output
     path = os.path.join(data_dir, 'combined.czml')
