@@ -120,10 +120,6 @@ const updateInfoboxTrackEntity = entity => {
     document.querySelector(".cesium-infoBox").style.display = ''; // show the box
 }
 
-// Moves the camera to the entity
-const flyToEntity = entity => {
-  if (entity.position === undefined) return;
-
   // Correct the height above terrain for an entity, since they are clamped to ground, which makes height = 0
   //TODO: is there no obvious way to handle this??
   const correctHeight = cartesian3 => {
@@ -131,6 +127,10 @@ const flyToEntity = entity => {
     const height = viewer.scene.globe.getHeight(carto);
     return Cartesian3.fromRadians(carto.longitude, carto.latitude, height);
   }
+
+// Moves the camera to the entity
+const flyToEntity = entity => {
+  if (entity.position === undefined) return;
 
   // If lastSelectedFlyToEntity was reset (because of camera movement), we use the terrain
   // at the center of the viewport to determine the viewing distance, otherwise we
@@ -241,8 +241,10 @@ const onSelectEntity = entity => {
     photoEntities.select(entity);
     photoTimelineToEntity(entity);
     timelineToEntity(entity);
-    flyToEntity(entity);
     updateInfobox(entity);
+    if (!viewer.clock.shouldAnimate) {
+      flyToEntity(entity);
+    }
   }
   else {
     // Effectively prevents other entities from being selected
@@ -251,12 +253,12 @@ const onSelectEntity = entity => {
 }
 viewer.selectedEntityChanged.addEventListener(onSelectEntity);
 
-// Scrolling for photo timeline
-const element = document.querySelector('#photoTimeline');
-element.addEventListener('wheel', (event) => {
+// Wheel scrolling for photo timeline
+const photoTimeline = document.querySelector('#photoTimeline');
+photoTimeline.addEventListener('wheel', (event) => {
   event.preventDefault();
-  element.scrollBy({
-    left: event.deltaY < 0 ? -30 : 30,
+  photoTimeline.scrollBy({
+    left: event.deltaY < 0 ? -60 : 60,
   });
 });
 
@@ -362,14 +364,13 @@ coordinatePicker.setInputAction(event => {
 
 Cesium.knockout.getObservable(viewer.clockViewModel, 'shouldAnimate').subscribe(isAnimating => {
   if (isAnimating) {
+    closeInfoBox();
+    viewer.selectedEntity = undefined;
     viewer.scene.globe.depthTestAgainstTerrain = true;
+    trackedEntity._viewFrom._value = new Cartesian3(0, -2500, 2000);
     viewer.trackedEntity = trackedEntity;
-    console.log(viewer.trackedEntity);
-    viewer.trackedEntity._viewFrom._value = new Cartesian3(-2000, -1700, 800);
-    console.log('Cesium clock is animating.');
   } else {
-    viewer.trackedEntity = undefined;
-    console.log('Cesium clock is paused.');
+    viewer.trackedEntity = undefined; // "Release" camera from focussing on entity
   }
 });
 
@@ -388,9 +389,11 @@ function throttle (callback, limit) {
 }
 
 const photoTimelineToTimeline = () => {
-  for (let photo of photoEntities.list) {
+  for (let [i, photo] of photoEntities.list.entries()) {
+    // Select the last photo that is before the current time
+    // (i.e. the one before the first after the current time)
     if (photo.properties.julianDate >= viewer.clock.currentTime) {
-      photoTimelineToEntity(photo, true);
+      photoTimelineToEntity(photoEntities.list[Math.max(0, i-1)], true);
       return;
     }
   }
@@ -404,6 +407,7 @@ const updateToClock = () => {
 viewer.clock.onTick.addEventListener(throttle(updateToClock, 200));
 viewer.clock.onTick.addEventListener(() => {
   if (viewer.clock.shouldAnimate) {
-    viewer.camera.rotateRight(0.003);
+    // Setting to anything higher is really making me dizzy
+    viewer.camera.rotateRight(0.001);
   }
 });

@@ -161,7 +161,7 @@ def create_tracking_entity(entity_id, track_dfs):
             "heightReference": "NONE"
         },
          "viewFrom": {
-            "cartesian": [1000, 1000, 1000] # this will be reset in the visualizer
+            "cartesian": [0, -2500, 2000] # this might be reset in the visualizer
         },
     }
 
