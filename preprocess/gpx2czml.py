@@ -44,8 +44,11 @@ def gpx_to_dataframe(gpx):
     output['elevation'] = elevations
     output['time'] = times
     output['timestamp'] = timestamps
+    output.sort_values('time', inplace=True)
+    output.reset_index(drop=True, inplace=True)
     return output
 
+# Returns a coordinate list used for positioning a CZML entity
 def create_coordinate_list(df_input, includeTimestep=True):
     results = []
     start_timestamp = min(df_input['timestamp'])
@@ -88,13 +91,13 @@ def create_polyline(path_id, df_input, metadata, color):
 # The cursor is the entity that will be shown on the polyline,
 # so it will be at the exact location of the track.
 # Each track will have its own cursor. (see create_tracking_entity)
-def create_tracking_cursor(point_id, df_input):
+def create_tracking_cursor(entity_id, df_input):
     point_starttime = min(df_input['time']).isoformat()
     point_stoptime = max(df_input['time']).isoformat()
     point_availability = point_starttime + "/" + point_stoptime
     coordinate_list = create_coordinate_list(df_input, includeTimestep=True)
     return {
-        "id": point_id,
+        "id": entity_id,
         "availability": point_availability,
         "position": {
             "epoch": point_starttime,
@@ -107,16 +110,9 @@ def create_tracking_cursor(point_id, df_input):
             "outlineColor": {
                 "rgba": [255, 0, 0, 200]
             },
-            "outlineWidth": 4,
-            "pixelSize": 8,
+            "outlineWidth": 5,
+            "pixelSize": 14,
             "heightReference": "CLAMP_TO_GROUND"
-        },
-         "viewFrom": {
-            "cartesian": [
-            -2080,
-            -1715,
-            779
-            ]
         },
     }
 
@@ -124,17 +120,34 @@ def create_tracking_cursor(point_id, df_input):
 # it's based on a heavily smoothed version of the tracks, so the camera movement is smooth.
 # There will be one entity for the whole dataset, based on the combined tracks.
 # (also see create_tracking_cursor)
-def create_tracking_entity(point_id, df_input):
-    df_input['longitude'] = df_input['longitude'].rolling(100, 1, True).mean()
-    df_input['latitude'] = df_input['latitude'].rolling(100, 1, True).mean()
-    df_input['elevation'] = df_input['elevation'].rolling(100, 1, True).mean()
+def create_tracking_entity(entity_id, track_dfs):
+    # Create a smooth path for the camera to track
+    SMOOTHING_WINDOW_SIZE = 100
+    smoothed_tracks = []
+    for track in track_dfs:
+        # Apply padding to keep the start and end of the tracks at their current locations
+        padding_before = pd.DataFrame([track.iloc[0].copy()] * (int(SMOOTHING_WINDOW_SIZE / 2) + 1))
+        padding_after = pd.DataFrame([track.iloc[-1].copy()] * (int(SMOOTHING_WINDOW_SIZE / 2) + 1))
+        padded_track = get_combined_tracks([padding_before, track, padding_after])
 
-    point_starttime = min(df_input['time']).isoformat()
-    point_stoptime = max(df_input['time']).isoformat()
+        # Actual smoothing
+        padded_track['longitude'] = padded_track['longitude'].rolling(SMOOTHING_WINDOW_SIZE, 1, True).mean()
+        padded_track['latitude'] = padded_track['latitude'].rolling(SMOOTHING_WINDOW_SIZE, 1, True).mean()
+        padded_track['elevation'] = padded_track['elevation'].rolling(SMOOTHING_WINDOW_SIZE, 1, True).mean()
+        padded_track['timestamp'] = padded_track['timestamp'].rolling(SMOOTHING_WINDOW_SIZE, 1, True).mean()
+        padded_track['time'] = padded_track['timestamp'].apply(lambda timestamp: datetime.fromtimestamp(timestamp))
+        smoothed_tracks.append(padded_track)
+
+    # Combine all the tracks into one
+    combined_tracks = get_combined_tracks(smoothed_tracks)
+
+    # Create and return the entity
+    point_starttime = min(combined_tracks['time']).isoformat()
+    point_stoptime = max(combined_tracks['time']).isoformat()
     point_availability = point_starttime + "/" + point_stoptime
-    coordinate_list = create_coordinate_list(df_input, includeTimestep=True)
+    coordinate_list = create_coordinate_list(combined_tracks, includeTimestep=True)
     return {
-        "id": point_id,
+        "id": entity_id,
         "availability": point_availability,
         "position": {
             "epoch": point_starttime,
@@ -142,21 +155,13 @@ def create_tracking_entity(point_id, df_input):
         },
         "point": {
             "color": {
-                "rgba": [255, 255, 255, 255]
+                "rgba": [255, 255, 255, 0]
             },
-            "outlineColor": {
-                "rgba": [255, 255, 0, 200]
-            },
-            "outlineWidth": 4,
-            "pixelSize": 8,
+            "pixelSize": 0,
             "heightReference": "NONE"
         },
          "viewFrom": {
-            "cartesian": [
-            -2080,
-            -1715,
-            779
-            ]
+            "cartesian": [1000, 1000, 1000] # this will be reset in the visualizer
         },
     }
 
@@ -360,6 +365,13 @@ def get_datadir(relative=False):
     key_dir = sys.argv[1] if len(sys.argv) > 1 else ''
     return f'{base_dir}/{key_dir}'
 
+def get_combined_tracks(tracks):
+    if len(tracks) == 0: return None
+    combined_tracks = pd.concat(tracks)
+    combined_tracks.sort_values('time', inplace=True)
+    combined_tracks.reset_index(drop=True, inplace=True)
+    return combined_tracks
+
 if __name__ == "__main__":
     dotenv.load_dotenv()
     data_dir = get_datadir()
@@ -373,12 +385,8 @@ if __name__ == "__main__":
     
     # Combined tracks
     tracks = list(map(lambda el: el[0], track_tuples))
-    combined_tracks = None
-    if len(tracks) > 0:
-        combined_tracks = pd.concat(tracks)
-        combined_tracks.sort_values('time', inplace=True)
-        combined_tracks.reset_index(drop=True, inplace=True)
-        combined_tracks.to_csv(os.path.join(get_datadir(), 'tracks_combined.csv'))
+    combined_tracks = get_combined_tracks(tracks)
+    #combined_tracks.to_csv(os.path.join(get_datadir(), 'tracks_combined.csv'))
 
     # Process photos
     photo_dfs = []
@@ -391,8 +399,8 @@ if __name__ == "__main__":
 
     # Tracking entity
     # ! Do this after processing the photos, since we'll smoothen the tracks in-place
-    if not combined_tracks is None:
-        tracking_entity = create_tracking_entity(f'track_entity', combined_tracks)
+    if len(tracks) > 0:
+        tracking_entity = create_tracking_entity(f'track_entity', tracks)
         czml.append(tracking_entity)
 
     # Define document packet (now that we know the global start/stop times)
