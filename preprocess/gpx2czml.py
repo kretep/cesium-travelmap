@@ -2,6 +2,7 @@
 import pandas as pd
 import numpy as np
 import gpxpy
+from tcx2gpx import TCX2GPX
 import json
 import os
 import sys
@@ -224,6 +225,17 @@ def load_track(path):
     return gpx_to_dataframe(gpx), metadata
 
 def load_tracks(tracks_dir):
+    # Convert any unconverted tcx files
+    listdir = os.listdir(tracks_dir)
+    listdir.sort()
+    tcx_files = [os.path.join(tracks_dir, file) for file in listdir if file[-4:] == '.tcx']
+    tcx_to_process = [file for file in tcx_files if not os.path.exists(file[:-4] + '.gpx')]
+    for tcx_path in tcx_to_process:
+        print(f"Converting to gpx: {tcx_path}")
+        gps_object = TCX2GPX(tcx_path)
+        gps_object.convert()
+
+    # List and load gpx files
     listdir = os.listdir(tracks_dir)
     listdir.sort()
     paths = [os.path.join(tracks_dir, file) for file in listdir if file[-4:] == '.gpx']
