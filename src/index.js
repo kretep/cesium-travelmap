@@ -36,6 +36,7 @@ let trackEntities; // entityList
 let lastSelectedFlyToEntity; // tracked to determine camera position when flying to a new entity
 let lastSelectedInfoboxEntity;
 let trackedEntity; //entity to track
+let isFlyingToEntity = false; // a flag to indicate if the camera is moving because of a flyToEntity call
 
 // "Class" that keeps track of a list of entities and the selected entity,
 // has previous/next functions that also update the viewer.selectedEntity
@@ -157,6 +158,7 @@ const flyToEntity = entity => {
   const newPosition = Cesium.Cartesian3.add(entityPos, positionOffset, new Cartesian3(0, 0, 0));
   const heading = viewer.camera.heading;
   const pitch = viewer.camera.pitch;
+  isFlyingToEntity = true;
   viewer.camera.flyTo({
     destination: newPosition,
     orientation : { heading, pitch, roll: 0.0 },
@@ -167,17 +169,21 @@ const flyToEntity = entity => {
 };
 
 // Reset the lastSelectedFlyToEntity if the camera moved too much
-viewer.camera.percentageChanged = 1;
+viewer.camera.percentageChanged = 0.05;
 viewer.camera.changed.addEventListener(() => {
-  lastSelectedFlyToEntity = undefined;
+  if (!isFlyingToEntity) {
+    lastSelectedFlyToEntity = undefined;
+  }
 });
 
 viewer.camera.moveEnd.addEventListener(() => {
-  const pitchDegrees = viewer.camera.pitch / Cesium.Math.PI * 180;
+  isFlyingToEntity = false;
+
   // Turn on depth testing only when pitch is shallow.
   // In other words: we don't need (or want) it when looking straight down.
   // Straight down is -PI/2 or -90 degrees.
   // Actually not sure if this works as expected....
+  const pitchDegrees = viewer.camera.pitch / Cesium.Math.PI * 180;
   viewer.scene.globe.depthTestAgainstTerrain = pitchDegrees > -45;
 });
 
@@ -226,6 +232,7 @@ document.querySelector('body').addEventListener('keydown', event => {
 
 const closeInfoBox = () => {
   document.querySelector(".cesium-infoBox").style.display = 'none';
+  viewer.selectedEntity = undefined;
 }
 document.querySelector('.cesium-infoBox-close').onclick = closeInfoBox;
 
@@ -252,8 +259,8 @@ const onSelectEntity = entity => {
     }
   }
   else {
-    // Effectively prevents other entities from being selected
-    viewer.selectedEntity = undefined;
+    // Effectively also prevents other entities from being selected
+    closeInfoBox();
   }
 }
 viewer.selectedEntityChanged.addEventListener(onSelectEntity);
@@ -370,7 +377,6 @@ coordinatePicker.setInputAction(event => {
 Cesium.knockout.getObservable(viewer.clockViewModel, 'shouldAnimate').subscribe(isAnimating => {
   if (isAnimating) {
     closeInfoBox();
-    viewer.selectedEntity = undefined;
     viewer.scene.globe.depthTestAgainstTerrain = true;
     trackedEntity._viewFrom._value = new Cartesian3(0, -2500, 2000);
     viewer.trackedEntity = trackedEntity;
