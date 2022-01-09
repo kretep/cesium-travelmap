@@ -202,10 +202,13 @@ def load_track(path):
     gpx_point_count = gpx.get_points_no()
 
     # Smoothen and resample track
-    for i in range(10):
-        gpx.smooth(vertical=True, horizontal=True, remove_extremes=True)
-    gpx.simplify(max_distance=1)
-    print(f"Reduced point count from {gpx_point_count} to {gpx.get_points_no()}")
+    if gpx_point_count > 1000:
+        for i in range(10):
+            gpx.smooth(vertical=True, horizontal=True, remove_extremes=True)
+        gpx.simplify(max_distance=1)
+        print(f"Reduced point count from {gpx_point_count} to {gpx.get_points_no()}")
+    else:
+        print(f"Point count: {gpx_point_count}")
 
     # Extract meta data
     minmax = gpx.get_elevation_extremes()
