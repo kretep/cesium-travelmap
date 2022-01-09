@@ -1,4 +1,5 @@
 
+import math
 import pandas as pd
 import numpy as np
 import gpxpy
@@ -393,6 +394,16 @@ def get_combined_tracks(tracks):
     combined_tracks.reset_index(drop=True, inplace=True)
     return combined_tracks
 
+def create_config(combined_tracks):
+    return {
+        "home_rect": {
+            "west": min(combined_tracks['longitude'] / 180 * math.pi),
+            "south": min(combined_tracks['latitude'] / 180 * math.pi),
+            "east": max(combined_tracks['longitude'] / 180 * math.pi),
+            "north": max(combined_tracks['latitude'] / 180 * math.pi)
+            }
+    }
+
 if __name__ == "__main__":
     dotenv.load_dotenv()
     data_dir = get_datadir()
@@ -432,6 +443,13 @@ if __name__ == "__main__":
 
     # Write output
     path = os.path.join(data_dir, 'combined.czml')
-    print(f"Writing output to ${path}")
+    print(f"Writing output to {path}")
     with open(path, 'w') as outfile:
         json.dump(czml, outfile)
+
+    # Write config
+    out_config = create_config(combined_tracks)
+    path = os.path.join(data_dir, 'config.json')
+    print(f"Writing config to {path}")
+    with open(path, 'w') as outfile:
+        json.dump(out_config, outfile)

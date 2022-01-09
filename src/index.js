@@ -13,6 +13,10 @@ import JulianDate from 'cesium/Source/Core/JulianDate';
 // Your access token can be found at: https://cesium.com/ion/tokens.
 Cesium.Ion.defaultAccessToken = process.env.CESIUM_TOKEN;
 
+Cesium.Camera.DEFAULT_VIEW_RECTANGLE = new Cesium.Rectangle(
+  -0.28035843653241455, 0.752411813958121, 0.39315544282710924, 1.0074066673564466);
+Cesium.Camera.DEFAULT_VIEW_FACTOR = 1.0;
+
 // The key for the dataset to load
 const urlSearchParams = new URLSearchParams(window.location.search);
 const key = urlSearchParams.get('key');
@@ -24,6 +28,18 @@ const viewer = new Cesium.Viewer('cesiumContainer', {
   shouldAnimate: false, // don't automatically play animation
   infoBox: false        // we'll use a custom infobox
 });
+
+// Load config
+const configPath = `data/${key}/config.json`;
+fetch(configPath)
+  .then(result => result.json())
+  .then(config => {
+    Cesium.Camera.DEFAULT_VIEW_FACTOR = 0.002;
+    const homeRect = config.home_rect;
+    Cesium.Camera.DEFAULT_VIEW_RECTANGLE = new Cesium.Rectangle(
+      homeRect.west, homeRect.south, homeRect.east, homeRect.north);
+    viewer.camera.flyHome(5.0);
+  });
 
 // Instantiate the custom infobox from the template and
 // put it inside the cesium viewer element for it to be rendered properly
@@ -345,21 +361,6 @@ fetch(czml_path)
     trackedEntity = allEntities.find(entity => entity.id === 'track_entity');
   });
 
-// Load config
-const configPath = `data/${key}/config.json`;
-fetch(configPath)
-  .then(result => result.json())
-  .then(config => {
-
-    // Fly to home view
-    const homeCoords = config.home;
-    viewer.camera.flyTo({
-      destination: Cesium.Cartesian3.fromDegrees(...homeCoords),
-      duration: 1.0
-    });
-  });
-
-
 // Log the cartographic position on clicking the globe. Mainly for manual positioning of photos and debugging
 const coordinatePicker = new Cesium.ScreenSpaceEventHandler(viewer.scene.canvas);
 coordinatePicker.setInputAction(event => {
@@ -376,6 +377,7 @@ coordinatePicker.setInputAction(event => {
           height.toFixed(0)].join(',');
     console.log(s);
   }
+  console.log(viewer.camera.computeViewRectangle());
 }, Cesium.ScreenSpaceEventType.LEFT_CLICK);
 
 Cesium.knockout.getObservable(viewer.clockViewModel, 'shouldAnimate').subscribe(isAnimating => {
