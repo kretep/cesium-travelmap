@@ -80,6 +80,10 @@ const updateInfoboxTrackEntity = entity => {
   table.style.display = '';
   
   const props = {
+    source: {
+      label: "Source",
+      format: d => d
+    },
     start_time: {
       label: "Start time",
       format: d => (new Date(d)).toLocaleString("nl-NL")

@@ -195,7 +195,7 @@ def get_color(index):
     ][index % 7]
 
 # Returns a tuple of dataframe and metadata dictionary
-def load_track(path):
+def load_track(path, config):
     print("Loading and processing track", path)
     gpx_file = open(path, 'r')
     gpx = gpxpy.parse(gpx_file)
@@ -215,6 +215,7 @@ def load_track(path):
     time_bounds = gpx.get_time_bounds()
     updown_elevation = gpx.get_uphill_downhill()
     metadata = {
+        "source": config.get('global', 'attribution', fallback=''),
         "start_time": time_bounds.start_time.isoformat(),
         "end_time": time_bounds.end_time.isoformat(),
         "duration": gpx.get_duration(),
@@ -228,6 +229,11 @@ def load_track(path):
     return gpx_to_dataframe(gpx), metadata
 
 def load_tracks(tracks_dir):
+    # Load config
+    config = configparser.RawConfigParser()
+    config_path = os.path.join(tracks_dir, 'config.cfg')
+    config.read(config_path)
+
     # Convert any unconverted tcx files
     listdir = os.listdir(tracks_dir)
     listdir.sort()
@@ -242,7 +248,7 @@ def load_tracks(tracks_dir):
     listdir = os.listdir(tracks_dir)
     listdir.sort()
     paths = [os.path.join(tracks_dir, file) for file in listdir if file[-4:] == '.gpx']
-    track_tuple = [load_track(path) for path in paths]
+    track_tuple = [load_track(path, config) for path in paths]
     return track_tuple
 
 def process_track(data, czml, index):
