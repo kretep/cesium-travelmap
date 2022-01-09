@@ -131,7 +131,12 @@ const updateInfoboxTrackEntity = entity => {
 // Moves the camera to the entity
 const flyToEntity = entity => {
   if (entity.position === undefined) return;
-
+  
+  // Complete any current flight, in order to get a correct reference point for the next flight.
+  // This prevents the focus from moving out of view when quickly going through photos,
+  // which would interrupt any in-progress flight at an unintended position.
+  viewer.camera.completeFlight();
+  
   // If lastSelectedFlyToEntity was reset (because of camera movement), we use the terrain
   // at the center of the viewport to determine the viewing distance, otherwise we
   // use the last selected entity
