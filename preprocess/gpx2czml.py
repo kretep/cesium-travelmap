@@ -18,11 +18,18 @@ import configparser
 ## See a primer on reading GPX data in python here: http://andykee.com/visualizing-strava-tracks-with-python.html
 
 DATETIME_FORMAT = "%Y-%m-%d %H:%M:%S%z"
-HEADER_DATE_TIME = "datetimeoriginal"
-HEADER_LAT = "gpslatitude#"
-HEADER_LON = "gpslongitude#"
-HEADER_ALT = "gpsaltitude#"
-HEADER_FILENAME = "filename"
+EXIF_TAG_DATE_TIME = "datetimeoriginal"
+EXIF_TAG_LAT = "gpslatitude#"
+EXIF_TAG_LON = "gpslongitude#"
+EXIF_TAG_ALT = "gpsaltitude#"
+PHOTO_FILENAME = "filename"
+PHOTO_LOCATION_SOURCE = "locationsource"
+PHOTO_LAT = "latitude"
+PHOTO_LON = "longitude"
+PHOTO_ATTRIBUTION = "attribution"
+PHOTO_ID = "id"
+PHOTO_DIRNAME = "dirname"
+LOCATION_SOURCES = ['exif', 'gpx', 'manual', 'interpolated']
 
 def gpx_to_dataframe(gpx):
     lats = []
@@ -264,55 +271,62 @@ def process_track(data, czml, index):
     cursor_object = create_tracking_cursor(f'point_{index}', df)
     czml.append(cursor_object)
 
-LOCATION_SOURCES = ['exif', 'gpx', 'manual']
+def create_photo_markers(df, czml):
+    if df is None: return
 
-def create_photo_marker(id, row, track, config, dir_name):
-    attribution = config.get('global', 'attribution')
-    coordinates, location_source = get_photo_coordinates(row, track, config)
-    if coordinates is None:
-        print(f'Discarding {dir_name}/{row[HEADER_FILENAME]}')
-        return None
-    title = f'{attribution}, {row[HEADER_DATE_TIME]} (location {LOCATION_SOURCES[location_source]})';
     base_path = get_datadir(True) # relative path starting at data/
-    return {
-        "id": id,
-        "name": title,
-        "position": {
-            "cartographicDegrees": [coordinates[0], coordinates[1], 2] # reset height to prevent floating markers
-        },
-        "point": {
-            "color": {
-                "rgba": [0, 50, 200, 100]
+
+    for index, row in df.iterrows():
+
+        # Read data from dataframe
+        lat = row[PHOTO_LAT]
+        lon = row[PHOTO_LON]
+        if lat == None or lon == None:
+            print(f'Discarding {row[PHOTO_DIRNAME]}/{row[PHOTO_FILENAME]}')
+            continue;
+        location_source = LOCATION_SOURCES[row[PHOTO_LOCATION_SOURCE]]
+        title = f'{row[PHOTO_ATTRIBUTION]}, {row[EXIF_TAG_DATE_TIME]} (location {location_source})'
+
+        # Append the marker
+        czml.append({
+            "id": row[PHOTO_ID],
+            "name": title,
+            "position": {
+                "cartographicDegrees": [lon, lat, 2] # reset height to prevent floating markers
             },
-            "outlineColor": {
-                "rgba": [200, 200, 200, 255]
+            "point": {
+                "color": {
+                    "rgba": [0, 50, 200, 100]
+                },
+                "outlineColor": {
+                    "rgba": [200, 200, 200, 255]
+                },
+                "outlineWidth": 2,
+                "pixelSize": 20,
+                "heightReference": "CLAMP_TO_GROUND"
             },
-            "outlineWidth": 2,
-            "pixelSize": 20,
-            "heightReference": "CLAMP_TO_GROUND"
-        },
-        "properties": {
-            "src": f'{base_path}/photos/{dir_name}/{row[HEADER_FILENAME]}',
-            "time": f'{row[HEADER_DATE_TIME].isoformat()}'
-        }
-    }
+            "properties": {
+                "src": f'{base_path}/photos/{row[PHOTO_DIRNAME]}/{row[PHOTO_FILENAME]}',
+                "time": f'{row[EXIF_TAG_DATE_TIME].isoformat()}'
+            }
+        })
 
 def get_photo_coordinates(photo_row, track, config):
     # 1) Read coordinates from EXIF data
-    lat = photo_row[HEADER_LAT]
-    lon = photo_row[HEADER_LON]
-    alt = photo_row[HEADER_ALT]
+    lat = photo_row[EXIF_TAG_LAT]
+    lon = photo_row[EXIF_TAG_LON]
+    alt = photo_row[EXIF_TAG_ALT]
     if lat != '-' and lon != '-' and alt != '-':
         return [float(lon), float(lat), float(alt)], 0
 
     # 2) See if there is a manual entry for this photo
-    coords = config.get('manual_coords', photo_row[HEADER_FILENAME], fallback=None)
+    coords = config.get('manual_coords', photo_row[PHOTO_FILENAME], fallback=None)
     if not coords is None:
         return list(map(float, coords.split(','))), 2
 
     # 3) No GPS data found; use photo time and GPS track to determine position
     if track is None: return None, None
-    tt = photo_row[HEADER_DATE_TIME].timestamp()
+    tt = photo_row[EXIF_TAG_DATE_TIME].timestamp()
     i0, i1 = get_closests(track, 'timestamp', tt)
     track_row0 = track.iloc[i0]
     track_row1 = track.iloc[i1]
@@ -338,7 +352,7 @@ def get_closests(df, col, val):
     i1 = i0 + 1
     return i0, i1
 
-def process_photos(dir_name, czml, combined_tracks):
+def process_photos(dir_name, combined_tracks):
     photo_dir = os.path.join(get_datadir(), 'photos', dir_name)
 
     # Read config
@@ -365,21 +379,34 @@ def process_photos(dir_name, czml, combined_tracks):
 
     # Check if date/time are available
     count = df.shape[0]
-    df = df[df[HEADER_DATE_TIME] != '-'] # Discard when date/time is unavailable
+    df = df[df[EXIF_TAG_DATE_TIME] != '-'] # Discard when date/time is unavailable
     discard_count = count - df.shape[0]
     if discard_count > 0: print(f"Discarded {discard_count} photos with date/time missing")
 
     # Apply date/time correction & sort
-    df[HEADER_DATE_TIME] = df[HEADER_DATE_TIME].apply(lambda s: datetime.strptime(s, DATETIME_FORMAT) + timedelta(hours=delta_hours, minutes=delta_minutes))
-    df.sort_values(HEADER_DATE_TIME, inplace=True)
+    df[EXIF_TAG_DATE_TIME] = df[EXIF_TAG_DATE_TIME].apply(lambda s: datetime.strptime(s, DATETIME_FORMAT) + timedelta(hours=delta_hours, minutes=delta_minutes))
+    df.sort_values(EXIF_TAG_DATE_TIME, inplace=True)
     df.reset_index(drop=True, inplace=True)
 
-    # Create markers for photos
+    # Get coordinates from exif/manual/gpx if available
+    # (interpolating between photos can only be done later, after all photos have been processed)
+    df[PHOTO_ID] = [None] * df.shape[0]
+    df[PHOTO_LAT] = [None] * df.shape[0]
+    df[PHOTO_LON] = [None] * df.shape[0]
+    df[PHOTO_LOCATION_SOURCE] = [-1] * df.shape[0]
     for index, row in df.iterrows():
-        marker = create_photo_marker(f'photo_{dir_name}_{index}', row, combined_tracks, config, dir_name)
-        if marker is not None:
-            czml.append(marker)
-    
+        df.loc[index, PHOTO_ID] = f'photo_{dir_name}_{index}'
+        coordinates, location_source = get_photo_coordinates(row, combined_tracks, config)
+        print(f'photo_{dir_name}_{index}', coordinates)
+        if not coordinates is None:
+            df.loc[index, PHOTO_LAT] = coordinates[1]
+            df.loc[index, PHOTO_LON] = coordinates[0]
+            df.loc[index, PHOTO_LOCATION_SOURCE] = location_source
+
+    # Some other properties we want to store
+    df[PHOTO_ATTRIBUTION] = [config.get('global', 'attribution')] * df.shape[0]
+    df[PHOTO_DIRNAME] = [dir_name] * df.shape[0]
+
     return df
 
 def get_datadir(relative=False):
@@ -401,7 +428,7 @@ def create_config(combined_tracks):
             "south": min(combined_tracks['latitude'] / 180 * math.pi),
             "east": max(combined_tracks['longitude'] / 180 * math.pi),
             "north": max(combined_tracks['latitude'] / 180 * math.pi)
-            }
+        }
     }
 
 if __name__ == "__main__":
@@ -426,8 +453,11 @@ if __name__ == "__main__":
     photo_dirs = [name for name in os.listdir(photo_dir) if os.path.isdir(os.path.join(photo_dir, name))]
     photo_dirs.sort()
     for dir_name in photo_dirs:
-        photo_dfs.append(process_photos(dir_name, czml, combined_tracks))
-    all_photos = pd.concat(photo_dfs)
+        photo_dfs.append(process_photos(dir_name, combined_tracks))
+    all_photos = pd.concat(photo_dfs) if len(photo_dfs) > 0 else None
+    pd.set_option('display.max_columns', None)
+    print(all_photos)
+    create_photo_markers(all_photos, czml)
 
     # Tracking entity
     # ! Do this after processing the photos, since we'll smoothen the tracks in-place
@@ -436,8 +466,8 @@ if __name__ == "__main__":
         czml.append(tracking_entity)
 
     # Define document packet (now that we know the global start/stop times)
-    starttime = min(all_photos[HEADER_DATE_TIME]) if combined_tracks is None else min(combined_tracks['time'])
-    stoptime = max(all_photos[HEADER_DATE_TIME]) if combined_tracks is None else max(combined_tracks['time'])
+    starttime = min(all_photos[EXIF_TAG_DATE_TIME]) if combined_tracks is None else min(combined_tracks['time'])
+    stoptime = max(all_photos[EXIF_TAG_DATE_TIME]) if combined_tracks is None else max(combined_tracks['time'])
     document_packet = create_document_packet("cesium-travelmap", starttime, stoptime)
     czml.insert(0, document_packet) # put at start
 
@@ -448,8 +478,9 @@ if __name__ == "__main__":
         json.dump(czml, outfile)
 
     # Write config
-    out_config = create_config(combined_tracks)
-    path = os.path.join(data_dir, 'config.json')
-    print(f"Writing config to {path}")
-    with open(path, 'w') as outfile:
-        json.dump(out_config, outfile)
+    if not combined_tracks is None: # TODO: handle photo-only datasets
+        out_config = create_config(combined_tracks)
+        path = os.path.join(data_dir, 'config.json')
+        print(f"Writing config to {path}")
+        with open(path, 'w') as outfile:
+            json.dump(out_config, outfile)
