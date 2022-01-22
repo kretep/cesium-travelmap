@@ -6,6 +6,7 @@ import "cesium/Build/Cesium/Widgets/widgets.css";
 import "./style.css";
 //import viewerCesiumNavigationMixin from 'cesium-navigation';
 import placeholderImage from './placeholder.png';
+import { getMarker } from './markers';
 import Cartesian3 from 'cesium/Source/Core/Cartesian3';
 import Cartographic from 'cesium/Source/Core/Cartographic';
 import JulianDate from 'cesium/Source/Core/JulianDate';
@@ -361,6 +362,21 @@ fetch(czml_path)
     trackedEntity = allEntities.find(entity => entity.id === 'track_entity');
   });
 
+const pois_path = `data/${key}/pois.geojson`;
+fetch(pois_path)
+  .then(response => response.json())
+  .then(geojson => {
+    Cesium.GeoJsonDataSource.clampToGround = true;
+    viewer.dataSources.add(Cesium.GeoJsonDataSource.load(geojson))
+    .then(dataSource => {
+      var entities = dataSource.entities.values;
+      for (var i = 0; i < entities.length; i++) {
+          var entity = entities[i];
+          entity.billboard.image = getMarker(entity.properties['marker-symbol']._value);
+      }
+    });
+  });
+
 // Log the cartographic position on clicking the globe. Mainly for manual positioning of photos and debugging
 const coordinatePicker = new Cesium.ScreenSpaceEventHandler(viewer.scene.canvas);
 coordinatePicker.setInputAction(event => {
@@ -376,8 +392,8 @@ coordinatePicker.setInputAction(event => {
           Cesium.Math.toDegrees(carto.latitude).toFixed(6),
           height.toFixed(0)].join(',');
     console.log(s);
+    console.log(viewer.camera.computeViewRectangle(viewer.scene.globe.ellipsoid, new Cartesian3()));
   }
-  console.log(viewer.camera.computeViewRectangle());
 }, Cesium.ScreenSpaceEventType.LEFT_CLICK);
 
 Cesium.knockout.getObservable(viewer.clockViewModel, 'shouldAnimate').subscribe(isAnimating => {
