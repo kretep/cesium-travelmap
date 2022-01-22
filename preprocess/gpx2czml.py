@@ -26,9 +26,11 @@ PHOTO_FILENAME = "filename"
 PHOTO_LOCATION_SOURCE = "locationsource"
 PHOTO_LAT = "latitude"
 PHOTO_LON = "longitude"
+PHOTO_ALT = "altitude"
 PHOTO_ATTRIBUTION = "attribution"
 PHOTO_ID = "id"
 PHOTO_DIRNAME = "dirname"
+PHOTO_TIMESTAMP = "timestamp"
 LOCATION_SOURCES = ['exif', 'gpx', 'manual', 'interpolated']
 
 def gpx_to_dataframe(gpx):
@@ -273,9 +275,7 @@ def process_track(data, czml, index):
 
 def create_photo_markers(df, czml):
     if df is None: return
-
     base_path = get_datadir(True) # relative path starting at data/
-
     for index, row in df.iterrows():
 
         # Read data from dataframe
@@ -296,7 +296,7 @@ def create_photo_markers(df, czml):
             },
             "point": {
                 "color": {
-                    "rgba": [0, 50, 200, 100]
+                    "rgba": [200, 50, 0, 100] if row[PHOTO_LOCATION_SOURCE] == 3 else [0, 50, 200, 100]
                 },
                 "outlineColor": {
                     "rgba": [200, 200, 200, 255]
@@ -393,21 +393,47 @@ def process_photos(dir_name, combined_tracks):
     df[PHOTO_ID] = [None] * df.shape[0]
     df[PHOTO_LAT] = [None] * df.shape[0]
     df[PHOTO_LON] = [None] * df.shape[0]
+    df[PHOTO_ALT] = [None] * df.shape[0]
     df[PHOTO_LOCATION_SOURCE] = [-1] * df.shape[0]
     for index, row in df.iterrows():
         df.loc[index, PHOTO_ID] = f'photo_{dir_name}_{index}'
         coordinates, location_source = get_photo_coordinates(row, combined_tracks, config)
-        print(f'photo_{dir_name}_{index}', coordinates)
         if not coordinates is None:
             df.loc[index, PHOTO_LAT] = coordinates[1]
             df.loc[index, PHOTO_LON] = coordinates[0]
+            df.loc[index, PHOTO_ALT] = coordinates[2]
             df.loc[index, PHOTO_LOCATION_SOURCE] = location_source
 
     # Some other properties we want to store
+    df[PHOTO_TIMESTAMP] = df[EXIF_TAG_DATE_TIME].apply(lambda dt: dt.timestamp())
     df[PHOTO_ATTRIBUTION] = [config.get('global', 'attribution')] * df.shape[0]
     df[PHOTO_DIRNAME] = [dir_name] * df.shape[0]
 
     return df
+
+def interpolate_photo_coordinates(df):
+    df.sort_values(PHOTO_TIMESTAMP, inplace=True)
+    df.reset_index(drop=True, inplace=True)
+    photos_with_coords = df[df[PHOTO_LOCATION_SOURCE] > -1]
+    for index, row in df.iterrows():
+        if row[PHOTO_LAT] is None:
+            tt = row[PHOTO_TIMESTAMP]
+            i0, i1 = get_closests(photos_with_coords, PHOTO_TIMESTAMP, tt)
+            row0 = photos_with_coords.iloc[i0]
+            row1 = photos_with_coords.iloc[i1]
+            t0 = row0[PHOTO_TIMESTAMP]
+            t1 = row1[PHOTO_TIMESTAMP]
+            fract = (tt - t0) / (t1 - t0)
+
+            # Discard any photos outside track time bounds
+            if fract < 0 or fract > 1:
+                continue
+
+            # Interpolate
+            df.loc[index, PHOTO_LAT] = row0[PHOTO_LAT] + fract * (row1[PHOTO_LAT] - row0[PHOTO_LAT])
+            df.loc[index, PHOTO_LON] = row0[PHOTO_LON] + fract * (row1[PHOTO_LON] - row0[PHOTO_LON])
+            df.loc[index, PHOTO_ALT] = row0[PHOTO_ALT] + fract * (row1[PHOTO_ALT] - row0[PHOTO_ALT])
+            df.loc[index, PHOTO_LOCATION_SOURCE] = 3
 
 def get_datadir(relative=False):
     base_dir = 'data' if relative else os.environ['DATA_DIR']
@@ -455,8 +481,10 @@ if __name__ == "__main__":
     for dir_name in photo_dirs:
         photo_dfs.append(process_photos(dir_name, combined_tracks))
     all_photos = pd.concat(photo_dfs) if len(photo_dfs) > 0 else None
-    pd.set_option('display.max_columns', None)
-    print(all_photos)
+    if combined_tracks is None:
+        # If no gpx tracks were available, we'll interpolate photo coordinates between
+        # the photos that had exif or manual coordinates
+        interpolate_photo_coordinates(all_photos)
     create_photo_markers(all_photos, czml)
 
     # Tracking entity
