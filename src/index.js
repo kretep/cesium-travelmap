@@ -50,6 +50,7 @@ viewer._element.appendChild(infobox);
 // Some variables
 let photoEntities; // entityList
 let trackEntities; // entityList
+let poiEntities;   // entityList
 let lastSelectedFlyToEntity; // tracked to determine camera position when flying to a new entity
 let lastSelectedInfoboxEntity;
 let trackedEntity; //entity to track
@@ -86,6 +87,14 @@ const updateInfobox = entity => {
   document.querySelector('#selectedPhoto').src = entity.properties.src;
   document.querySelector('#selectedPhotoCaption').innerHTML = entity.name;
   document.querySelector("#selectedPhoto").style.display = ''; // show photo
+  document.querySelector(".cesium-infoBox").style.display = ''; // show the box
+}
+
+const updateInfoboxPOI = entity => {
+  lastSelectedInfoboxEntity = entity;
+  document.querySelector('#track-metadata').style.display = 'none'; // hide metadata
+  document.querySelector("#selectedPhoto").style.display = 'none'; // hide photo
+  document.querySelector('#selectedPhotoCaption').innerHTML = entity.properties['name']
   document.querySelector(".cesium-infoBox").style.display = ''; // show the box
 }
 
@@ -135,11 +144,10 @@ const updateInfoboxTrackEntity = entity => {
     },
   }
   
-  // String interpolation FTW
-  table.innerHTML = `${Object.keys(props).map(id => 
-    `<tr><td>${props[id].label}</td><td>${props[id].format(entity.properties[id]._value)}</td></tr>`).join('')}`;
+  table.innerHTML = Object.keys(props).map(key => 
+    `<tr><td>${props[key].label}</td><td>${props[key].format(entity.properties[key]._value)}</td></tr>`).join('');
   
-    document.querySelector(".cesium-infoBox").style.display = ''; // show the box
+  document.querySelector(".cesium-infoBox").style.display = ''; // show the box
 }
 
   // Correct the height above terrain for an entity, since they are clamped to ground, which makes height = 0
@@ -231,6 +239,9 @@ const previousEntity = () => {
   if (lastSelectedInfoboxEntity.id.startsWith('line_')) {
     trackEntities.previous();
   }
+  if (lastSelectedInfoboxEntity.id.startsWith('poi_')) {
+    poiEntities.previous();
+  }
 }
 document.querySelector('.btn-prev').onclick = previousEntity;
 
@@ -241,6 +252,9 @@ const nextEntity = () => {
   }
   if (lastSelectedInfoboxEntity.id.startsWith('line_')) {
     trackEntities.next();
+  }
+  if (lastSelectedInfoboxEntity.id.startsWith('poi_')) {
+    poiEntities.next();
   }
 }
 document.querySelector('.btn-next').onclick = nextEntity;
@@ -269,6 +283,10 @@ const onSelectEntity = entity => {
   if (Cesium.defined(entity) && entity.id.startsWith('line_')) {
     trackEntities.select(entity);
     updateInfoboxTrackEntity(entity);
+  }
+  else if (Cesium.defined(entity) && entity.id.startsWith('poi_')) {
+    poiEntities.select(entity);
+    updateInfoboxPOI(entity);
   }
   else if (Cesium.defined(entity) && entity.id.startsWith('photo_')) {
     photoEntities.select(entity);
@@ -374,6 +392,7 @@ fetch(pois_path)
           var entity = entities[i];
           entity.billboard.image = getMarker(entity.properties['marker-symbol']._value);
       }
+      poiEntities = entityList(entities);
     });
   });
 
