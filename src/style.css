@@ -61,14 +61,13 @@ div.cesium-infoBox-description {
   width: 100%;
   text-align: center;
   color: white;
+  position: relative;
 }
 
-div.cesium-infoBox-description img {
-  width: 99.5%;
+div.cesium-infoBox-description > img {
+  width: 100%;
   height: auto;
-  margin: 2px;
   align-self: center;
-  border-radius: 7px;
 }
 
 div.cesium-infoBox-description table {
@@ -89,14 +88,13 @@ div.cesium-infoBox-description table {
 
 .btn-prev, .btn-next {
   display: block;
-  height: 93%;
+  position: absolute;
+  height: 100%;
   width: 15%;
   z-index: 2;
   font-size: 48px;
   font-weight: bolder;
   opacity: 0%;
-  position: absolute;
-  bottom: 0px;
   outline: none;
   border: none;
   border-radius: 7px;
