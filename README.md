@@ -48,13 +48,14 @@ Put the gpx files in DATA_DIR/KEY_DIR/tracks.
 
 Put series of photos in separate folders. One folder for each author or source is recommended. Each of these folders should be under DATA_DIR/KEY_DIR/photos/.
 
-In each folder, put a config.cfg file and modify the content as following. Attribution is the author or source of the photo and delta.hours/minutes are used to correct the photo time. Optionally, any photo coordinates can be manually specified in the manual_coords section. Coordinates are longitude(!), latitude(!), altitude. Photos for which no coordinates can be determined (because they lack the GPS information or they are outside the GPX track time-wise) will be discarded.
+In each folder, put a config.cfg file with some settings specific for this set of photos. `attribution` is the author or source of the photo and `delta.hours` and `delta.minutes` are used to correct the photo time. The `ignore_duplicate_exif_coords` flag can be set to ignore EXIF coordinates which are duplicates of other photos (which can indicate reduced accuracy, in which case we want to use another method for coordinates). Optionally, any photo coordinates can be manually specified in the `manual_coords` section. Coordinates are longitude, latitude, altitude (note the order!). Photos for which no coordinates can be determined (because they lack the GPS information or they are outside the GPX track time-wise) will be discarded.
 
 ```
 [global]
 attribution=Peter
 delta.hours=1
 delta.minutes=0
+ignore_duplicate_exif_coords=False
 
 [manual_coords]
 DSC03150.JPG=7.62354,44.06445,777.4

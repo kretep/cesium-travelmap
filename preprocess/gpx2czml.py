@@ -311,13 +311,21 @@ def create_photo_markers(df, czml):
             }
         })
 
-def get_photo_coordinates(photo_row, track, config):
+def get_photo_coordinates(photo_row, track, config, photo_df):
     # 1) Read coordinates from EXIF data
+    ignore_duplicate_exif_coords = config.getboolean('global', 'ignore_duplicate_exif_coords', fallback=False)
     lat = photo_row[EXIF_TAG_LAT]
     lon = photo_row[EXIF_TAG_LON]
     alt = photo_row[EXIF_TAG_ALT]
     if lat != '-' and lon != '-' and alt != '-':
-        return [float(lon), float(lat), float(alt)], 0
+        # Check if the coordinates are accurate, which will not be the case
+        # if multiple photos are present with exactly the same coordinates.
+        # In that case, we ignore the EXIF and go on below
+        if not (ignore_duplicate_exif_coords and \
+                photo_df[photo_df[EXIF_TAG_LAT] == lat].shape[0] > 1 and \
+                photo_df[photo_df[EXIF_TAG_LON] == lon].shape[0] > 1):
+            return [float(lon), float(lat), float(alt)], 0
+        print(f"Ignoring EXIF coordinates for {photo_row[PHOTO_FILENAME]}")
 
     # 2) See if there is a manual entry for this photo
     coords = config.get('manual_coords', photo_row[PHOTO_FILENAME], fallback=None)
@@ -369,7 +377,7 @@ def process_photos(dir_name, combined_tracks):
         print("Executing exiftool for", photo_dir)
         exiftool_path = os.environ['EXIFTOOL_DIR']
         os.chdir(exiftool_path)
-        exif_call = f'./exiftool -filename -gpslatitude# -gpslongitude# -gpsaltitude# -gpsdatestamp -gpstimestamp -datetimeoriginal -createdate -dateFormat "%Y-%m-%d %H:%M:%S%z" -T -csv --ext csv {photo_dir} > {csv_path}'
+        exif_call = f'./exiftool -filename -gpslatitude# -gpslongitude# -gpsaltitude# -gpsdatestamp -gpstimestamp -datetimeoriginal -createdate -dateFormat "%Y-%m-%d %H:%M:%S%z" -fileOrder filename -T -csv --ext csv {photo_dir} > {csv_path}'
         subprocess.call(exif_call, shell=True)
 
     # Read and preprocess csv (exiftool output)
@@ -397,7 +405,7 @@ def process_photos(dir_name, combined_tracks):
     df[PHOTO_LOCATION_SOURCE] = [-1] * df.shape[0]
     for index, row in df.iterrows():
         df.loc[index, PHOTO_ID] = f'photo_{dir_name}_{index}'
-        coordinates, location_source = get_photo_coordinates(row, combined_tracks, config)
+        coordinates, location_source = get_photo_coordinates(row, combined_tracks, config, df)
         if not coordinates is None:
             df.loc[index, PHOTO_LAT] = coordinates[1]
             df.loc[index, PHOTO_LON] = coordinates[0]
