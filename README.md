@@ -70,6 +70,19 @@ This will perform a number of tasks:
 * Run exiftool for each directory with photos. This will generate a csv file with all the required information extracted from the photos.
 * Combine all GPX tracks and photo information into one CZML file (DATA_DIR/KEY_DIR/combined.czml) that can be visualized.
 
+### How are photo coordinates determined?
+
+The algorithm goes through the following steps to determine the coordinates and uses the first that applies:
+
+1. If a photo has its coordinates specified manually in the config.cfg (photo folder), those coordinates will be used. See `manual_coords` above.
+2. If a photo has GPS coordinates in the EXIF tags, that will be used, with the following exceptions:
+   1. `ignore_duplicate_exif_coords` is set to True in the config.cfg and the coordinates are found to have duplicates (which can indicate bad accuracy).
+   2. `ignore_exif` contains the photo filename (comma-delimited list) in the config.cfg.
+3. The coordinates will be interpolated between the closest track points time-wise, with the following exceptions:
+   1. If the photo time falls in a `ignore_gpx_intervals` interval and has a matching directory name.
+   2. If the photo time falls outside the tracks.
+4. The coordinates will be interpolated between the closest photos time-wise. If the photo was "excluded" before because of it falling in one of the ignore_gpx_intervals, it will only consider the photos in the specified directory names for that interval for interpolation.
+
 ## Run the visualizer
 
 Make sure .env contains the correct CESIUM_TOKEN and your data directory is relative to the index.html, at data/

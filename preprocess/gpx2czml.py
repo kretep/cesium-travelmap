@@ -31,6 +31,7 @@ PHOTO_ATTRIBUTION = "attribution"
 PHOTO_ID = "id"
 PHOTO_DIRNAME = "dirname"
 PHOTO_TIMESTAMP = "timestamp"
+PHOTO_INTERVAL = "interval"
 LOCATION_SOURCES = ['exif', 'gpx', 'manual', 'interpolated']
 
 def gpx_to_dataframe(gpx):
@@ -47,7 +48,7 @@ def gpx_to_dataframe(gpx):
                 lons.append(point.longitude)
                 elevations.append(point.elevation)
                 times.append(point.time)
-                timestamps.append(point.time.timestamp())
+                timestamps.append(point.time.timestamp() if not point.time is None else None)
 
     output = pd.DataFrame()
     output['latitude'] = lats
@@ -55,6 +56,12 @@ def gpx_to_dataframe(gpx):
     output['elevation'] = elevations
     output['time'] = times
     output['timestamp'] = timestamps
+    
+    # Mark first and last rows as boundaries
+    output['boundary'] = [0] * len(lats)
+    output.loc[0, 'boundary'] = 1
+    output.loc[output.index[-1], 'boundary'] = 1
+
     output.sort_values('time', inplace=True)
     output.reset_index(drop=True, inplace=True)
     return output
@@ -226,8 +233,8 @@ def load_track(path, config):
     updown_elevation = gpx.get_uphill_downhill()
     metadata = {
         "source": config.get('global', 'attribution', fallback=''),
-        "start_time": time_bounds.start_time.isoformat(),
-        "end_time": time_bounds.end_time.isoformat(),
+        "start_time": time_bounds.start_time.isoformat() if not time_bounds.start_time is None else None,
+        "end_time": time_bounds.end_time.isoformat() if not time_bounds.end_time is None else None,
         "duration": gpx.get_duration(),
         "length_2d": gpx.length_2d(),
         "ascent": updown_elevation.uphill,
@@ -311,9 +318,17 @@ def create_photo_markers(df, czml):
             }
         })
 
-def get_photo_coordinates(photo_row, track, config, photo_df):
-    # 1) Read coordinates from EXIF data
+def get_photo_coordinates(photo_df, index, track, config, global_config):
+    photo_row = photo_df.iloc[index]
+
+    # 1) See if there is a manual entry for this photo
+    coords = config.get('manual_coords', photo_row[PHOTO_FILENAME], fallback=None)
+    if not coords is None:
+        return list(map(float, coords.split(','))), 2
+
+    # 2) Read coordinates from EXIF data
     ignore_duplicate_exif_coords = config.getboolean('global', 'ignore_duplicate_exif_coords', fallback=False)
+    ignore_exif = config.get('global', 'ignore_exif', fallback='').split(',')
     lat = photo_row[EXIF_TAG_LAT]
     lon = photo_row[EXIF_TAG_LON]
     alt = photo_row[EXIF_TAG_ALT]
@@ -321,23 +336,35 @@ def get_photo_coordinates(photo_row, track, config, photo_df):
         # Check if the coordinates are accurate, which will not be the case
         # if multiple photos are present with exactly the same coordinates.
         # In that case, we ignore the EXIF and go on below
-        if not (ignore_duplicate_exif_coords and \
+        ignore_because_duplicate = ignore_duplicate_exif_coords and \
                 photo_df[photo_df[EXIF_TAG_LAT] == lat].shape[0] > 1 and \
-                photo_df[photo_df[EXIF_TAG_LON] == lon].shape[0] > 1):
+                photo_df[photo_df[EXIF_TAG_LON] == lon].shape[0] > 1
+        ignore_because_specified = photo_row[PHOTO_FILENAME] in ignore_exif
+        if not ignore_because_duplicate and not ignore_because_specified:
             return [float(lon), float(lat), float(alt)], 0
         print(f"Ignoring EXIF coordinates for {photo_row[PHOTO_FILENAME]}")
-
-    # 2) See if there is a manual entry for this photo
-    coords = config.get('manual_coords', photo_row[PHOTO_FILENAME], fallback=None)
-    if not coords is None:
-        return list(map(float, coords.split(','))), 2
 
     # 3) No GPS data found; use photo time and GPS track to determine position
     if track is None: return None, None
     tt = photo_row[EXIF_TAG_DATE_TIME].timestamp()
+
+    # Check if time is inside any of the ignore_gpx_intervals
+    intervals = dict(global_config.items('ignore_gpx_intervals'))
+    for name, value in intervals.items():
+        interval = value.split(',')
+        d0 = datetime.fromisoformat(interval[0]).timestamp()
+        d1 = datetime.fromisoformat(interval[1]).timestamp()
+        if tt > d0 and tt < d1 and photo_row[PHOTO_DIRNAME] in interval[2:]:
+            photo_df.loc[index, PHOTO_INTERVAL] = name
+            return None, None
+
+    # Continue track interpolation
     i0, i1 = get_closests(track, 'timestamp', tt)
     track_row0 = track.iloc[i0]
     track_row1 = track.iloc[i1]
+    if track_row0['boundary'] == 1 and track_row1['boundary'] == 1:
+        # It's between tracks
+        return None, None
     t0 = track_row0['timestamp']
     t1 = track_row1['timestamp']
     fract = (tt - t0) / (t1 - t0)
@@ -360,7 +387,7 @@ def get_closests(df, col, val):
     i1 = i0 + 1
     return i0, i1
 
-def process_photos(dir_name, combined_tracks):
+def process_photos(dir_name, combined_tracks, global_config):
     photo_dir = os.path.join(get_datadir(), 'photos', dir_name)
 
     # Read config
@@ -396,44 +423,52 @@ def process_photos(dir_name, combined_tracks):
     df.sort_values(EXIF_TAG_DATE_TIME, inplace=True)
     df.reset_index(drop=True, inplace=True)
 
-    # Get coordinates from exif/manual/gpx if available
+    # Some other properties we want to store
+    df[PHOTO_TIMESTAMP] = df[EXIF_TAG_DATE_TIME].apply(lambda dt: dt.timestamp())
+    df[PHOTO_ATTRIBUTION] = [config.get('global', 'attribution')] * df.shape[0]
+    df[PHOTO_DIRNAME] = [dir_name] * df.shape[0] # needed in get_photo_coords
+
+    # Get coordinates from manual/exif/gpx if available
     # (interpolating between photos can only be done later, after all photos have been processed)
     df[PHOTO_ID] = [None] * df.shape[0]
     df[PHOTO_LAT] = [None] * df.shape[0]
     df[PHOTO_LON] = [None] * df.shape[0]
     df[PHOTO_ALT] = [None] * df.shape[0]
     df[PHOTO_LOCATION_SOURCE] = [-1] * df.shape[0]
+    df[PHOTO_INTERVAL] = [None] * df.shape[0]
     for index, row in df.iterrows():
         df.loc[index, PHOTO_ID] = f'photo_{dir_name}_{index}'
-        coordinates, location_source = get_photo_coordinates(row, combined_tracks, config, df)
+        coordinates, location_source = get_photo_coordinates(df, index, combined_tracks, config, global_config)
         if not coordinates is None:
             df.loc[index, PHOTO_LAT] = coordinates[1]
             df.loc[index, PHOTO_LON] = coordinates[0]
             df.loc[index, PHOTO_ALT] = coordinates[2]
             df.loc[index, PHOTO_LOCATION_SOURCE] = location_source
 
-    # Some other properties we want to store
-    df[PHOTO_TIMESTAMP] = df[EXIF_TAG_DATE_TIME].apply(lambda dt: dt.timestamp())
-    df[PHOTO_ATTRIBUTION] = [config.get('global', 'attribution')] * df.shape[0]
-    df[PHOTO_DIRNAME] = [dir_name] * df.shape[0]
-
     return df
 
-def interpolate_photo_coordinates(df):
+def interpolate_photo_coordinates(df, global_config):
     df.sort_values(PHOTO_TIMESTAMP, inplace=True)
     df.reset_index(drop=True, inplace=True)
     photos_with_coords = df[df[PHOTO_LOCATION_SOURCE] > -1]
     for index, row in df.iterrows():
         if row[PHOTO_LAT] is None:
+            # Determine interval and photo selection to interpolate in
+            filtered_photos = photos_with_coords
+            if not row[PHOTO_INTERVAL] is None:
+                interval = global_config.get('ignore_gpx_intervals', row[PHOTO_INTERVAL], fallback='').split(',')
+                dir_names = interval[2:]
+                filtered_photos = photos_with_coords[photos_with_coords[PHOTO_DIRNAME].isin(dir_names)]
+
             tt = row[PHOTO_TIMESTAMP]
-            i0, i1 = get_closests(photos_with_coords, PHOTO_TIMESTAMP, tt)
-            row0 = photos_with_coords.iloc[i0]
-            row1 = photos_with_coords.iloc[i1]
+            i0, i1 = get_closests(filtered_photos, PHOTO_TIMESTAMP, tt)
+            row0 = filtered_photos.iloc[i0]
+            row1 = filtered_photos.iloc[i1]
             t0 = row0[PHOTO_TIMESTAMP]
             t1 = row1[PHOTO_TIMESTAMP]
             fract = (tt - t0) / (t1 - t0)
 
-            # Discard any photos outside track time bounds
+            # Discard any photos outside time bounds
             if fract < 0 or fract > 1:
                 continue
 
@@ -469,7 +504,13 @@ if __name__ == "__main__":
     dotenv.load_dotenv()
     data_dir = get_datadir()
     czml = []
-    
+
+    # Load global config
+    global_config = configparser.RawConfigParser()
+    config_path = os.path.join(data_dir, 'config.cfg')
+    if os.path.exists(config_path):
+        global_config.read(config_path)
+
     # Process tracks
     print(f"Loading and combining tracks")
     track_tuples = load_tracks(os.path.join(data_dir, 'tracks'))
@@ -487,12 +528,10 @@ if __name__ == "__main__":
     photo_dirs = [name for name in os.listdir(photo_dir) if os.path.isdir(os.path.join(photo_dir, name))]
     photo_dirs.sort()
     for dir_name in photo_dirs:
-        photo_dfs.append(process_photos(dir_name, combined_tracks))
+        photo_dfs.append(process_photos(dir_name, combined_tracks, global_config))
     all_photos = pd.concat(photo_dfs) if len(photo_dfs) > 0 else None
-    if combined_tracks is None:
-        # If no gpx tracks were available, we'll interpolate photo coordinates between
-        # the photos that had exif or manual coordinates
-        interpolate_photo_coordinates(all_photos)
+    # Now that all photos have been processed, interpolate any photos that still miss a location
+    interpolate_photo_coordinates(all_photos, global_config)
     create_photo_markers(all_photos, czml)
 
     # Tracking entity
