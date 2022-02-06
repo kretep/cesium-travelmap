@@ -452,7 +452,21 @@ def process_photos(dir_name, combined_tracks, global_config):
 
     return df
 
-def interpolate_photo_coordinates(df, global_config):
+def copy_position(source_row, target_df, target_index):
+    target_df.loc[target_index, PHOTO_TIMESTAMP] = source_row['timestamp']
+    target_df.loc[target_index, PHOTO_LAT] = source_row['latitude']
+    target_df.loc[target_index, PHOTO_LON] = source_row['longitude']
+    target_df.loc[target_index, PHOTO_ALT] = source_row['elevation']
+
+def insert_trackpoints(df, trackpoint0, trackpoint1):
+    df.loc[-2] = None # we'll sort later
+    df.loc[-1] = None
+    copy_position(trackpoint0, df, -2)
+    copy_position(trackpoint1, df, -1)
+    df.sort_values(PHOTO_TIMESTAMP, inplace=True)
+    df.reset_index(drop=True, inplace=True)
+
+def interpolate_photo_coordinates(df, global_config, combined_tracks):
     df.sort_values(PHOTO_TIMESTAMP, inplace=True)
     df.reset_index(drop=True, inplace=True)
     photos_with_coords = df[df[PHOTO_LOCATION_SOURCE] > -1]
@@ -460,11 +474,27 @@ def interpolate_photo_coordinates(df, global_config):
         if row[PHOTO_LAT] is None:
             # Determine interval and photo selection to interpolate in
             filtered_photos = photos_with_coords
-            if not row[PHOTO_INTERVAL] is None:
-                interval = global_config.get('ignore_gpx_intervals', row[PHOTO_INTERVAL], fallback='').split(',')
-                dir_names = interval[2:]
-                filtered_photos = photos_with_coords[photos_with_coords[PHOTO_DIRNAME].isin(dir_names)]
+            if not combined_tracks is None:
+                if not row[PHOTO_INTERVAL] is None:
+                    interval = global_config.get('ignore_gpx_intervals', row[PHOTO_INTERVAL], fallback='').split(',')
+                    dir_names = interval[2:]
+                    filtered_photos = photos_with_coords[photos_with_coords[PHOTO_DIRNAME].isin(dir_names)]
+                    # filtered_photos = filtered_photos.copy(deep=True) # to prevent SettingWithCopyError
+                    # filtered_photos.reset_index(drop=True, inplace=True)
+                    # # Add track points around interval
+                    # d0 = datetime.fromisoformat(interval[0]).timestamp()
+                    # d1 = datetime.fromisoformat(interval[1]).timestamp()
+                    # i0, _ = get_closests(combined_tracks, 'timestamp', d0)
+                    # _, i1 = get_closests(combined_tracks, 'timestamp', d1)
+                    # insert_trackpoints(filtered_photos, combined_tracks.iloc[i0], combined_tracks.iloc[i1])
+                else:
+                    # Add closest track points
+                    filtered_photos = filtered_photos.copy(deep=True) # to prevent SettingWithCopyError
+                    i0, i1 = get_closests(combined_tracks, 'timestamp', row[PHOTO_TIMESTAMP])
+                    insert_trackpoints(filtered_photos, combined_tracks.iloc[i0], combined_tracks.iloc[i1])
+                    filtered_photos.to_csv(os.path.join(get_datadir(), 'debug2.csv'))
 
+            # Find reference points for interpolation
             tt = row[PHOTO_TIMESTAMP]
             i0, i1 = get_closests(filtered_photos, PHOTO_TIMESTAMP, tt)
             row0 = filtered_photos.iloc[i0]
@@ -475,6 +505,7 @@ def interpolate_photo_coordinates(df, global_config):
 
             # Discard any photos outside time bounds
             if fract < 0 or fract > 1:
+                print(f"Could not interpolate {row[PHOTO_DIRNAME]}/{row[PHOTO_FILENAME]} at {row[EXIF_TAG_DATE_TIME]}")
                 continue
 
             # Interpolate
@@ -536,7 +567,7 @@ if __name__ == "__main__":
         photo_dfs.append(process_photos(dir_name, combined_tracks, global_config))
     all_photos = pd.concat(photo_dfs) if len(photo_dfs) > 0 else None
     # Now that all photos have been processed, interpolate any photos that still miss a location
-    interpolate_photo_coordinates(all_photos, global_config)
+    interpolate_photo_coordinates(all_photos, global_config, combined_tracks)
     create_photo_markers(all_photos, czml)
 
     # Tracking entity
