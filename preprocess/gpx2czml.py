@@ -187,11 +187,19 @@ def create_document_packet(name, starttime, stoptime):
     starttime = starttime.isoformat()
     stoptime = stoptime.isoformat()
     availability = starttime + "/" + stoptime
+    tm_sha = subprocess.run(['git', 'rev-parse', '--short', 'HEAD'], stdout=subprocess.PIPE).stdout.decode('utf-8').strip()
+    tm_dirty = subprocess.call('git diff-index --quiet HEAD', shell=True) != 0
+    tm_timestamp = subprocess.run(['git', 'show', '-s', '--format=%cd', '--date=format:%Y-%m-%dT%H:%M:%S'], stdout=subprocess.PIPE).stdout.decode('utf-8').strip()
+    generated_at = datetime.now().isoformat()
     return {
         "id": "document",
         "name": name,
         "version": "1.0",
         "author": "cesium-travelmap/gpx2czml.py",
+        "travelmap-sha": tm_sha,
+        "travelmap-dirty": tm_dirty,
+        "travelmap-timestamp": tm_timestamp,
+        "generated-at": generated_at,
         "clock": {
             "interval": availability,
             "currentTime": starttime,
@@ -492,7 +500,6 @@ def interpolate_photo_coordinates(df, global_config, combined_tracks):
                     filtered_photos = filtered_photos.copy(deep=True) # to prevent SettingWithCopyError
                     i0, i1 = get_closests(combined_tracks, 'timestamp', row[PHOTO_TIMESTAMP])
                     insert_trackpoints(filtered_photos, combined_tracks.iloc[i0], combined_tracks.iloc[i1])
-                    filtered_photos.to_csv(os.path.join(get_datadir(), 'debug2.csv'))
 
             # Find reference points for interpolation
             tt = row[PHOTO_TIMESTAMP]
