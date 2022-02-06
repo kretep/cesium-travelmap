@@ -398,8 +398,13 @@ def process_photos(dir_name, combined_tracks, global_config):
     delta_hours = float(config.get('global', 'delta.hours', fallback=0))
     delta_minutes = float(config.get('global', 'delta.minutes', fallback=0))
 
-    # Execute exiftool if photos.csv does not exist yet
+    # Clean if required
     csv_path = os.path.join(photo_dir, 'photos.csv')
+    do_clean = sys.argv[2] == 'clean' if len(sys.argv) > 2 else False
+    if do_clean:
+        os.remove(csv_path)
+
+    # Execute exiftool if photos.csv does not exist
     if not os.path.exists(csv_path):
         print("Executing exiftool for", photo_dir)
         exiftool_path = os.environ['EXIFTOOL_DIR']
