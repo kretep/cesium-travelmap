@@ -416,9 +416,11 @@ def process_photos(dir_name, combined_tracks, global_config):
     if not os.path.exists(csv_path):
         print("Executing exiftool for", photo_dir)
         exiftool_path = os.environ['EXIFTOOL_DIR']
+        wd = os.getcwd()
         os.chdir(exiftool_path)
         exif_call = f'./exiftool -filename -gpslatitude# -gpslongitude# -gpsaltitude# -gpsdatestamp -gpstimestamp -datetimeoriginal -createdate -dateFormat "%Y-%m-%d %H:%M:%S%z" -fileOrder filename -T -csv --ext csv {photo_dir} > {csv_path}'
         subprocess.call(exif_call, shell=True)
+        os.chdir(wd)
 
     # Read and preprocess csv (exiftool output)
     print(f"Processing photos: ${photo_dir}")
