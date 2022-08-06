@@ -69,7 +69,7 @@ def gpx_to_dataframe(gpx):
 # Returns a coordinate list used for positioning a CZML entity
 def create_coordinate_list(df_input, includeTimestep=True):
     results = []
-    start_timestamp = min(df_input['timestamp'])
+    start_timestamp = min(df_input['timestamp']) if includeTimestep else None
     for i in df_input.index:
         if includeTimestep:
             timestamp = df_input.timestamp.iloc[i]
