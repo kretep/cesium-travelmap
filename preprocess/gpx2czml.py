@@ -441,7 +441,7 @@ def process_photos(dir_name, combined_tracks, global_config):
     if discard_count > 0: print(f"Discarded {discard_count} photos with date/time missing")
 
     # Apply date/time correction & sort
-    df[EXIF_TAG_DATE_TIME] = df[EXIF_TAG_DATE_TIME].apply(lambda s: datetime.strptime(s, DATETIME_FORMAT) + timedelta(hours=delta_hours, minutes=delta_minutes))
+    df[EXIF_TAG_DATE_TIME] = df[EXIF_TAG_DATE_TIME].apply(lambda s: datetime.strptime(s, DATETIME_FORMAT) + timedelta(hours=delta_hours, minutes=delta_minutes, seconds=delta_seconds))
     df.sort_values(EXIF_TAG_DATE_TIME, inplace=True)
     df.reset_index(drop=True, inplace=True)
 
