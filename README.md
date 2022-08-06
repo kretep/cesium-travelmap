@@ -56,18 +56,35 @@ attribution=Peter
 delta.hours=1
 delta.minutes=0
 ignore_duplicate_exif_coords=False
+ignore_exif=IMG_20191018_131350.jpg,IMG_20191015_183730.jpg,IMG_20191018_135704.jpg
 
 [manual_coords]
 DSC03150.JPG=7.62354,44.06445,777.4
 DSC03151.JPG=7.62354,44.06446,777.4
 ```
 
+In the tracks folder, put a config.cfg file for the tracks.
+
+```
+[global]
+attribution=<track attribution name>
+```
+
+In the dataset root (at the same level as the `photos` and `tracks` dirs), put a config.cfg file with settings specific for this dataset. The `ignore_gpx_intervals` section contains a list of intervals for which to exclude some photo folders (also see the section on photo coordinates below).
+
+```
+[ignore_gpx_intervals]
+any_name_or_description=2019-10-16T10:00:00+02:00,2019-10-16T15:00:00+02:00,folder1-to-exclude,folder2-to-exclude
+alternative_2=2019-10-16T15:00:00+02:00,2019-10-16T16:30:00+02:00,folder2-to-exclude
+alternative_3=2019-10-17T16:29:00+02:00,2019-10-17T17:28:00+02:00,folder3-to-exclude
+```
+
 Execute the preprocessing script:
 ```
-python3 preprocess/gpx2czml.py key
+python3 preprocess/gpx2czml.py key [clean]
 ```
 This will perform a number of tasks:
-* Run exiftool for each directory with photos. This will generate a csv file with all the required information extracted from the photos.
+* Run exiftool for each directory with photos. This will generate a csv file with all the required information extracted from the photos. Data is cached in a file; include `clean` to force a rerun of exiftool.
 * Combine all GPX tracks and photo information into one CZML file (DATA_DIR/KEY_DIR/combined.czml) that can be visualized.
 
 ### How are photo coordinates determined?
@@ -92,3 +109,20 @@ npm start
 ```
 
 Access the visualizer at http://localhost:8081?key=KEY_DIR, where KEY_DIR is the value for the corresponding dataset.
+
+## Build for production
+
+```
+npm run build
+```
+
+This builds the project to the `dist` folder, including the data with only the files required to visualize the dataset (i.e. without the original gpx and config files).
+
+Upload to server (because I forget):
+```
+scp -r $(pwd)/dist/data/folder <user>@<host>:folder
+
+:: on server
+mv ~/folder /var/www/<website>/data/
+```
+
