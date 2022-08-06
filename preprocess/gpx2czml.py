@@ -401,10 +401,17 @@ def process_photos(dir_name, combined_tracks, global_config):
     # Read config
     config = configparser.RawConfigParser()
     config_path = os.path.join(photo_dir, 'config.cfg')
-    if not os.path.exists(config_path): return
-    config.read(config_path)
-    delta_hours = float(config.get('global', 'delta.hours', fallback=0))
-    delta_minutes = float(config.get('global', 'delta.minutes', fallback=0))
+    # defaults
+    attribution = dir_name.capitalize()
+    delta_hours = 0
+    delta_minutes = 0
+    delta_seconds = 0
+    if os.path.exists(config_path):
+        config.read(config_path)
+        attribution = config.get('global', 'attribution', fallback=attribution)
+        delta_hours = float(config.get('global', 'delta.hours', fallback=delta_hours))
+        delta_minutes = float(config.get('global', 'delta.minutes', fallback=delta_minutes))
+        delta_seconds = float(config.get('global', 'delta.seconds', fallback=delta_seconds))
 
     # Clean if required
     csv_path = os.path.join(photo_dir, 'photos.csv')
@@ -440,7 +447,7 @@ def process_photos(dir_name, combined_tracks, global_config):
 
     # Some other properties we want to store
     df[PHOTO_TIMESTAMP] = df[EXIF_TAG_DATE_TIME].apply(lambda dt: dt.timestamp())
-    df[PHOTO_ATTRIBUTION] = [config.get('global', 'attribution')] * df.shape[0]
+    df[PHOTO_ATTRIBUTION] = [attribution] * df.shape[0]
     df[PHOTO_DIRNAME] = [dir_name] * df.shape[0] # needed in get_photo_coords
 
     # Get coordinates from manual/exif/gpx if available
